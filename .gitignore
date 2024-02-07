@@ -1,3 +1,10 @@
+staged-data/
+raw-data/
+processed-data/
+reduced-data/
+
+*.lock
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

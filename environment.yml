@@ -1,0 +1,14 @@
+name: etl-tpch
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - dask
+  - dask-expr
+  - coiled
+  - zstandard
+  - python-duckdb
+  - xgboost
+  - fastapi
+  - prefect
+  - filelock
