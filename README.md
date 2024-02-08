@@ -26,4 +26,10 @@ Then, in yet another terminal window, run the ETL pipeline:
 python pipeline.py
 ```
 
+Then, in yet another terminal window, serve the data dashboard:
+
+```bash
+streamlit run dashboard.py
+```
+
 Watch things run, both in your terminals and on Prefect cloud, and then ctrl-C to shut everything down.

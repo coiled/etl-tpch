@@ -12,3 +12,4 @@ dependencies:
   - fastapi
   - prefect
   - filelock
+  - streamlit
