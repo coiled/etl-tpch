@@ -1,7 +1,4 @@
-staged-data/
-raw-data/
-processed-data/
-reduced-data/
+data/
 
 *.lock
 

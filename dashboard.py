@@ -2,11 +2,13 @@ import dask.dataframe as dd
 import plotly.express as px
 import streamlit as st
 
+from pipeline.files import REDUCED_DATA_DIR
+
 
 @st.cache_data
 def get_data(region, part_type):
     return dd.read_parquet(
-        f"reduced-data/{region}/{part_type.upper()}/*.parquet"
+        f"{REDUCED_DATA_DIR}/{region}/{part_type.upper()}/*.parquet"
     ).compute()
 
 

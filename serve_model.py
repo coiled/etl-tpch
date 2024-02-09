@@ -7,9 +7,10 @@ import xgboost as xgb
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-filepath = "./model.json"
+from pipeline.files import MODEL_FILE
+
 model = xgb.XGBClassifier()
-model.load_model(filepath)
+model.load_model(MODEL_FILE)
 
 
 def create_type_instance(type_name: str):
