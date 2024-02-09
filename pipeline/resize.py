@@ -34,7 +34,7 @@ def archive_parquet_files(files):
     for file in files:
         path, basename = os.path.split(file)
         outfile = os.path.join(
-            path.replace(STAGING_PARQUET_DIR, RAW_PARQUET_DIR), basename
+            path.replace(str(STAGING_PARQUET_DIR), str(RAW_PARQUET_DIR)), basename
         )
         os.makedirs(os.path.dirname(outfile), exist_ok=True)
         shutil.move(file, outfile)

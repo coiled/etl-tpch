@@ -10,13 +10,12 @@ from .files import PROCESSED_DATA_DIR, REDUCED_DATA_DIR
 
 @task
 def save_query(region, part_type):
-    dataset_path = PROCESSED_DATA_DIR + "/"
     size = 15
-    region_ds = dd.read_parquet(dataset_path + "region")
-    nation_filtered = dd.read_parquet(dataset_path + "nation")
-    supplier_filtered = dd.read_parquet(dataset_path + "supplier")
-    part_filtered = dd.read_parquet(dataset_path + "part")
-    partsupp_filtered = dd.read_parquet(dataset_path + "partsupp")
+    region_ds = dd.read_parquet(PROCESSED_DATA_DIR / "region")
+    nation_filtered = dd.read_parquet(PROCESSED_DATA_DIR / "nation")
+    supplier_filtered = dd.read_parquet(PROCESSED_DATA_DIR / "supplier")
+    part_filtered = dd.read_parquet(PROCESSED_DATA_DIR / "part")
+    partsupp_filtered = dd.read_parquet(PROCESSED_DATA_DIR / "partsupp")
 
     region_filtered = region_ds[(region_ds["r_name"] == region.upper())]
     r_n_merged = nation_filtered.merge(

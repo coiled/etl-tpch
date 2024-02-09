@@ -8,16 +8,14 @@ from datetime import timedelta
 
 import boto3
 import botocore.session
-import click
 import coiled
 import dask
 import duckdb
-import fsspec
 import psutil
 import pyarrow.compute as pc
 from prefect import flow
 
-from pipeline.files import STAGING_JSON_DIR
+from pipeline.files import STAGING_JSON_DIR, get_filesystem
 
 REGION = None
 
@@ -277,8 +275,7 @@ def get_bucket_region(path: str):
 
 @flow(log_prints=True)
 def generate_data(data_dir):
-    protocol = fsspec.utils.get_protocol(data_dir)
-    fs = fsspec.filesystem(protocol)
+    fs = get_filesystem(data_dir)
     fs.makedirs(data_dir, exist_ok=True)
     generate(
         scale=1,
@@ -289,27 +286,9 @@ def generate_data(data_dir):
     )
 
 
-@click.command()
-@click.option(
-    "--mode",
-    default="local",
-    type=click.Choice(["local", "cloud"]),
-    help="Whether to run locally or on the cloud with Coiled.",
-)
-def main(mode):
-    print(f"Generating data in {mode} mode...")
-    # TODO: Move this local / cloud filepath dispatching to `pipeline/files.py`
-    if mode == "local":
-        data_dir = STAGING_JSON_DIR
-    else:
-        data_dir = "s3://oss-scratch-space/jrbourbeau/etl-tpch"
-
+if __name__ == "__main__":
     generate_data.serve(
         name="generate_data",
-        parameters={"data_dir": data_dir},
+        parameters={"data_dir": STAGING_JSON_DIR},
         interval=timedelta(seconds=30),
     )
-
-
-if __name__ == "__main__":
-    main()

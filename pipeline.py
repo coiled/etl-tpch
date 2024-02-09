@@ -9,7 +9,6 @@ from pipeline.resize import resize_parquet
 from pipeline.train import update_model
 
 if __name__ == "__main__":
-
     preprocess = json_to_parquet.to_deployment(
         name="preprocess",
         interval=timedelta(seconds=30),
