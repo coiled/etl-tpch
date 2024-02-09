@@ -1,7 +1,5 @@
 import enum
 import functools
-import glob
-import os
 import pathlib
 import tempfile
 import uuid
@@ -10,9 +8,11 @@ from datetime import timedelta
 
 import boto3
 import botocore.session
+import click
 import coiled
 import dask
 import duckdb
+import fsspec
 import psutil
 import pyarrow.compute as pc
 from prefect import flow
@@ -205,13 +205,6 @@ def _tpch_data_gen(
                 df.to_pandas().to_json(
                     out_, compression=compression.value.lower(), date_format="iso"
                 )
-                # pq.write_table(
-                #     df,
-                #     out_,
-                #     compression=compression.value.lower(),
-                #     write_statistics=True,
-                #     write_page_index=True,
-                # )
                 print(f"Saved {out_}")
             print(f"Finished exporting table {table}!")
         print("Finished exporting all data!")
@@ -283,22 +276,40 @@ def get_bucket_region(path: str):
 
 
 @flow(log_prints=True)
-def generate_data():
-    os.makedirs(STAGING_JSON_DIR, exist_ok=True)
+def generate_data(data_dir):
+    protocol = fsspec.utils.get_protocol(data_dir)
+    fs = fsspec.filesystem(protocol)
+    fs.makedirs(data_dir, exist_ok=True)
     generate(
         scale=1,
         partition_size="10 MiB",
-        path=STAGING_JSON_DIR,
+        path=data_dir,
         relaxed_schema=True,
         compression=CompressionCodec.ZSTD,
     )
-    files = glob.glob(STAGING_JSON_DIR)
-    print(f"Saved {files}")
 
 
-if __name__ == "__main__":
+@click.command()
+@click.option(
+    "--mode",
+    default="local",
+    type=click.Choice(["local", "cloud"]),
+    help="Whether to run locally or on the cloud with Coiled.",
+)
+def main(mode):
+    print(f"Generating data in {mode} mode...")
+    # TODO: Move this local / cloud filepath dispatching to `pipeline/files.py`
+    if mode == "local":
+        data_dir = STAGING_JSON_DIR
+    else:
+        data_dir = "s3://oss-scratch-space/jrbourbeau/etl-tpch"
 
     generate_data.serve(
         name="generate_data",
+        parameters={"data_dir": data_dir},
         interval=timedelta(seconds=30),
     )
+
+
+if __name__ == "__main__":
+    main()

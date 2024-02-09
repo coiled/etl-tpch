@@ -13,3 +13,4 @@ dependencies:
   - prefect
   - filelock
   - streamlit
+  - s3fs
