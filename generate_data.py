@@ -37,4 +37,7 @@ def generate_data():
 
 if __name__ == "__main__":
 
-    generate_data.serve(name="generate_data", interval=timedelta(seconds=30))
+    generate_data.serve(
+        name="generate_data",
+        interval=timedelta(seconds=30),
+    )

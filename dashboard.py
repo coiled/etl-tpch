@@ -1,27 +1,60 @@
-import glob
-import time
-
 import dask.dataframe as dd
+import plotly.express as px
 import streamlit as st
 
 
 @st.cache_data
-def get_data():
-    files = "reduced-data/*.parquet"
-    while not glob.glob(files):
-        print("Waiting for files...")
-        time.sleep(10)
-    return dd.read_parquet(files).compute()
+def get_data(region, part_type):
+    return dd.read_parquet(
+        f"reduced-data/{region}/{part_type.upper()}/*.parquet"
+    ).compute()
 
 
-df = get_data()
-options = df.l_returnflag.unique()
-returnflag = st.multiselect(
-    "l_returnflag",
-    options,
+description = """
+### Recommended Suppliers
+_Some text that explains the business problem being addressed..._
+
+This query finds which supplier should be selected to place an order for a given part in a given region.
+"""
+st.markdown(description)
+regions = list(map(str.title, ["EUROPE", "AFRICA", "AMERICA", "ASIA", "MIDDLE EAST"]))
+region = st.selectbox(
+    "Region",
+    regions,
+    index=None,
+    placeholder="Please select a region...",
 )
-if not returnflag:
-    st.error(f"Please select at least one return code {options.tolist()}")
-else:
-    data = df.loc[df.l_returnflag.isin(returnflag)]
-    st.write("### Return Flag", data)
+part_types = list(map(str.title, ["COPPER", "BRASS", "TIN", "NICKEL", "STEEL"]))
+part_type = st.selectbox(
+    "Part Type",
+    part_types,
+    index=None,
+    placeholder="Please select a part type...",
+)
+if region and part_type:
+    df = get_data(region, part_type)
+    df = df.rename(
+        columns={
+            "n_name": "Country",
+            "s_name": "Supplier",
+            "s_acctbal": "Balance",
+            "p_partkey": "Part ID",
+        }
+    )
+    maxes = df.groupby("Country").Balance.idxmax()
+    data = df.loc[maxes]
+    figure = px.choropleth(
+        data,
+        locationmode="country names",
+        locations="Country",
+        featureidkey="Supplier",
+        color="Balance",
+        color_continuous_scale="viridis",
+        hover_data=["Country", "Supplier", "Balance"],
+    )
+    st.plotly_chart(figure, theme="streamlit", use_container_width=True)
+    on = st.toggle("Show data")
+    if on:
+        st.write(
+            df[["Country", "Supplier", "Balance", "Part ID"]], use_container_width=True
+        )

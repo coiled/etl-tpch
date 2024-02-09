@@ -13,7 +13,6 @@ import dask
 import duckdb
 import psutil
 import pyarrow.compute as pc
-import pyarrow.parquet as pq
 
 REGION = None
 
@@ -208,6 +207,7 @@ def _tpch_data_gen(
                 #     write_statistics=True,
                 #     write_page_index=True,
                 # )
+                print(f"Saved {out_}")
             print(f"Finished exporting table {table}!")
         print("Finished exporting all data!")
 

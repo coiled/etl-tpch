@@ -3,7 +3,7 @@ import itertools
 import os
 import shutil
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import dask_expr as dd
 import pandas as pd
@@ -45,6 +45,7 @@ def convert_to_parquet(file):
     )
     os.makedirs(os.path.dirname(outfile), exist_ok=True)
     df.to_parquet(outfile, compression="snappy")
+    print(f"Saved {outfile}")
     return outfile
 
 
@@ -54,16 +55,15 @@ def archive_json_file(file):
     outfile = os.path.join(path.replace(STAGING_JSON_DIR, RAW_JSON_DIR), basename)
     os.makedirs(os.path.dirname(outfile), exist_ok=True)
     shutil.move(file, outfile)
+    print(f"Archived {outfile}")
 
 
 @flow(log_prints=True)
 def json_to_parquet():
     with lock_format:
         files = get_json_files()
-        for file in files:
-            parquet_file = convert_to_parquet(file)
-            print(f"Saved {parquet_file}")
-            archive_json_file(file)
+        parquet_files = convert_to_parquet.map(files)
+        archive_json_file.map(files, wait_for=parquet_files)
 
 
 @task
@@ -105,54 +105,89 @@ def resize_parquet():
 
 
 @task
-def save_query(files):
-    lineitem_ds = dd.read_parquet(files)
-    # TODO: We loose datetime info roundtripping through JSON.
-    # It would be nice if we kept that information.
-    lineitem_ds.l_shipdate = dd.to_datetime(lineitem_ds.l_shipdate)
-    lineitem_filtered = lineitem_ds[lineitem_ds.l_shipdate <= datetime(1998, 9, 2)]
-    lineitem_filtered["sum_qty"] = lineitem_filtered.l_quantity
-    lineitem_filtered["sum_base_price"] = lineitem_filtered.l_extendedprice
-    lineitem_filtered["avg_qty"] = lineitem_filtered.l_quantity
-    lineitem_filtered["avg_price"] = lineitem_filtered.l_extendedprice
-    lineitem_filtered["sum_disc_price"] = lineitem_filtered.l_extendedprice * (
-        1 - lineitem_filtered.l_discount
-    )
-    lineitem_filtered["sum_charge"] = (
-        lineitem_filtered.l_extendedprice
-        * (1 - lineitem_filtered.l_discount)
-        * (1 + lineitem_filtered.l_tax)
-    )
-    lineitem_filtered["avg_disc"] = lineitem_filtered.l_discount
-    lineitem_filtered["count_order"] = lineitem_filtered.l_orderkey
-    gb = lineitem_filtered.groupby(["l_returnflag", "l_linestatus"])
+def save_query(region, part_type):
+    dataset_path = PROCESSED_DATA_DIR + "/"
+    size = 15
+    region_ds = dd.read_parquet(dataset_path + "region")
+    nation_filtered = dd.read_parquet(dataset_path + "nation")
+    supplier_filtered = dd.read_parquet(dataset_path + "supplier")
+    part_filtered = dd.read_parquet(dataset_path + "part")
+    partsupp_filtered = dd.read_parquet(dataset_path + "partsupp")
 
-    total = gb.agg(
-        {
-            "sum_qty": "sum",
-            "sum_base_price": "sum",
-            "sum_disc_price": "sum",
-            "sum_charge": "sum",
-            "avg_qty": "mean",
-            "avg_price": "mean",
-            "avg_disc": "mean",
-            "count_order": "size",
-        }
+    region_filtered = region_ds[(region_ds["r_name"] == region.upper())]
+    r_n_merged = nation_filtered.merge(
+        region_filtered, left_on="n_regionkey", right_on="r_regionkey", how="inner"
+    )
+    s_r_n_merged = r_n_merged.merge(
+        supplier_filtered,
+        left_on="n_nationkey",
+        right_on="s_nationkey",
+        how="inner",
+    )
+    ps_s_r_n_merged = s_r_n_merged.merge(
+        partsupp_filtered, left_on="s_suppkey", right_on="ps_suppkey", how="inner"
+    )
+    part_filtered = part_filtered[
+        (part_filtered["p_size"] == size)
+        & (part_filtered["p_type"].astype(str).str.endswith(part_type.upper()))
+    ]
+    merged_df = part_filtered.merge(
+        ps_s_r_n_merged, left_on="p_partkey", right_on="ps_partkey", how="inner"
+    )
+    min_values = merged_df.groupby("p_partkey")["ps_supplycost"].min().reset_index()
+    min_values.columns = ["P_PARTKEY_CPY", "MIN_SUPPLYCOST"]
+    merged_df = merged_df.merge(
+        min_values,
+        left_on=["p_partkey", "ps_supplycost"],
+        right_on=["P_PARTKEY_CPY", "MIN_SUPPLYCOST"],
+        how="inner",
     )
 
-    result = total.reset_index().sort_values(["l_returnflag", "l_linestatus"])
-    os.makedirs(REDUCED_DATA_DIR, exist_ok=True)
+    result = (
+        merged_df[
+            [
+                "s_acctbal",
+                "s_name",
+                "n_name",
+                "p_partkey",
+                "p_mfgr",
+                "s_address",
+                "s_phone",
+                "s_comment",
+            ]
+        ]
+        .sort_values(
+            by=[
+                "s_acctbal",
+                # "n_name",
+                # "s_name",
+                # "p_partkey",
+            ],
+            # ascending=[
+            #     False,
+            #     True,
+            #     True,
+            #     True,
+            # ],
+        )
+        .head(100, compute=False)
+    )
+
+    outdir = os.path.join(REDUCED_DATA_DIR, region, part_type)
+    os.makedirs(outdir, exist_ok=True)
 
     def name(_):
-        return f"lineitem_{uuid.uuid4()}.snappy.parquet"
+        return f"query_2_{uuid.uuid4()}.snappy.parquet"
 
-    result.to_parquet(REDUCED_DATA_DIR, compression="snappy", name_function=name)
+    result.to_parquet(outdir, compression="snappy", name_function=name)
 
 
 @flow
 def query_reduce():
-    files = os.path.join(PROCESSED_DATA_DIR, "lineitem", "*.parquet")
-    save_query(files)
+    regions = ["europe", "africa", "america", "asia", "middle east"]
+    part_types = ["copper", "brass", "tin", "nickel", "steel"]
+    for region, part_type in itertools.product(regions, part_types):
+        save_query(region, part_type)
 
 
 # ML model training workflow
@@ -160,9 +195,11 @@ def query_reduce():
 
 @task
 def train(model):
-    df = pd.read_parquet(REDUCED_DATA_DIR)
-    X = df[["sum_qty", "avg_disc"]].astype({"sum_qty": float})
-    y = df["l_returnflag"].map({"A": 0, "R": 1, "N": 2}).astype("category")
+    df = pd.read_parquet(os.path.join(REDUCED_DATA_DIR, "europe", "brass"))
+    X = df[["p_partkey", "s_acctbal"]]
+    y = df["n_name"].map(
+        {"FRANCE": 0, "UNITED KINGDOM": 1, "RUSSIA": 2, "GERMANY": 3, "ROMANIA": 4}
+    )
     model.fit(X, y)
     return model
 
