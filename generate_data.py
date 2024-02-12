@@ -14,48 +14,22 @@ import dask
 import duckdb
 import psutil
 import pyarrow.compute as pc
-from prefect import flow
+from prefect import flow, task
 
 from pipeline.files import STAGING_JSON_DIR, fs
 from pipeline.settings import LOCAL
 
-REGION = None
 
-
-class CompressionCodec(enum.Enum):
-    SNAPPY = "snappy"
-    LZ4 = "lz4"
-    ZSTD = "zstd"
-    GZIP = "gzip"
-    BROTLI = "brotli"
-    NONE = None
-
-
+@task
 @coiled.function(local=LOCAL, region="us-east-1")
-def generate(
-    scale: float = 0.1,
-    path: str = "./tpch-data",
-    relaxed_schema: bool = False,
-    compression: CompressionCodec = CompressionCodec.NONE,
-) -> str:
-    if str(path).startswith("s3"):
-        path += "/" if not path.endswith("/") else ""
-        global REGION
-        REGION = get_bucket_region(path)
-    else:
-        path = (
-            pathlib.Path(path)
-        )
-        # path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-
-    print(f"Scale: {scale}, Path: {path}")
-
+def generate(scale: float, path: str) -> str:
     with duckdb.connect() as con:
         con.install_extension("tpch")
         con.load_extension("tpch")
 
         if str(path).startswith("s3://"):
+            path += "/" if not path.endswith("/") else ""
+            REGION = get_bucket_region(path)
             session = botocore.session.Session()
             creds = session.get_credentials()
             con.install_extension("httpfs")
@@ -68,6 +42,11 @@ def generate(
                 SET s3_session_token='{creds.token}';
                 """
             )
+        else:
+            path = (
+                pathlib.Path(path)
+            )
+            path.mkdir(parents=True, exist_ok=True)
 
         con.sql(
             f"""
@@ -82,11 +61,6 @@ def generate(
         query = f"call dbgen(sf={scale})"
         con.sql(query)
         print("Finished generating data, exporting...")
-
-        if relaxed_schema:
-            print("Converting types date -> timestamp_s and decimal -> double")
-            _alter_tables(con)
-            print("Done altering tables")
 
         tables = (
             con.sql("select * from information_schema.tables")
@@ -105,7 +79,7 @@ def generate(
             )
             df = con.sql(stmt).arrow()
 
-            file = f"{table}_{datetime.datetime.now().isoformat()}.json"
+            file = f"{table}_{datetime.datetime.now().isoformat().split('.')[0]}.json"
             if isinstance(out, str) and out.startswith("s3"):
                 out_ = f"{out}/{file}"
             else:
@@ -114,44 +88,13 @@ def generate(
                 out_ = str(out_ / file)
 
             df.to_pandas().to_json(
-                out_, compression=compression.value, date_format="iso",
+                out_,
+                date_format="iso",
                 orient="records",
                 lines=True,
             )
-            print(f"Finished exporting table {table}! to {out_}")
-        print("Finished exporting all data!")
-
-
-def _alter_tables(con):
-    """
-    Temporary, used for debugging performance in data types.
-
-    ref discussion here: https://github.com/coiled/benchmarks/pull/1131
-    """
-    tables = [
-        "nation",
-        "region",
-        "customer",
-        "supplier",
-        "lineitem",
-        "orders",
-        "partsupp",
-        "part",
-    ]
-    for table in tables:
-        schema = con.sql(f"describe {table}").arrow()
-
-        # alter decimals to floats
-        for column in schema.filter(
-            pc.match_like(pc.field("column_type"), "DECIMAL%")
-        ).column("column_name"):
-            con.sql(f"alter table {table} alter {column} type double")
-
-        # alter date to timestamp_s
-        for column in schema.filter(pc.field("column_type") == "DATE").column(
-            "column_name"
-        ):
-            con.sql(f"alter table {table} alter {column} type timestamp_s")
+            print(f"Exported table {table} to {out_}")
+        print("Finished exporting all data")
 
 
 def get_bucket_region(path: str):
@@ -159,8 +102,6 @@ def get_bucket_region(path: str):
         raise ValueError(f"'{path}' is not an S3 path")
     bucket = path.replace("s3://", "").split("/")[0]
     resp = boto3.client("s3").get_bucket_location(Bucket=bucket)
-    # Buckets in region 'us-east-1' results in None, b/c why not.
-    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/get_bucket_location.html#S3.Client.get_bucket_location
     return resp["LocationConstraint"] or "us-east-1"
 
 
@@ -170,7 +111,6 @@ def generate_data(data_dir):
     generate(
         scale=0.01,
         path=data_dir,
-        relaxed_schema=True,
     )
 
 
