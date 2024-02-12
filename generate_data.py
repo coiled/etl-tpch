@@ -1,43 +1,19 @@
 import datetime
-import enum
-import pathlib
+import os
 from datetime import timedelta
 
 import botocore.session
 import coiled
 import duckdb
 import psutil
-import pyarrow.compute as pc
-from prefect import flow
+from prefect import flow, task
 
 from pipeline.settings import REGION, STAGING_JSON_DIR, coiled_options, fs
 
 
-class CompressionCodec(enum.Enum):
-    SNAPPY = "snappy"
-    LZ4 = "lz4"
-    ZSTD = "zstd"
-    GZIP = "gzip"
-    BROTLI = "brotli"
-    NONE = None
-
-
+@task(log_prints=True)
 @coiled.function(**coiled_options)
-def generate(
-    scale: float = 0.1,
-    path: str = "./tpch-data",
-    relaxed_schema: bool = False,
-    compression: CompressionCodec = CompressionCodec.NONE,
-) -> str:
-    if str(path).startswith("s3"):
-        path += "/" if not path.endswith("/") else ""
-    else:
-        path = pathlib.Path(path)
-        # path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-
-    print(f"Scale: {scale}, Path: {path}")
-
+def generate(scale: float, path: os.PathLike) -> None:
     with duckdb.connect() as con:
         con.install_extension("tpch")
         con.load_extension("tpch")
@@ -70,11 +46,6 @@ def generate(
         con.sql(query)
         print("Finished generating data, exporting...")
 
-        if relaxed_schema:
-            print("Converting types date -> timestamp_s and decimal -> double")
-            _alter_tables(con)
-            print("Done altering tables")
-
         tables = (
             con.sql("select * from information_schema.tables")
             .arrow()
@@ -82,78 +53,35 @@ def generate(
         )
         for table in map(str, tables):
             print(f"Exporting table: {table}")
-            if str(path).startswith("s3://"):
-                out = path + table
-            else:
-                out = path / table
-
             stmt = f"""select * from {table}"""
             df = con.sql(stmt).arrow()
 
-            file = f"{table}_{datetime.datetime.now().isoformat()}.json"
-            if isinstance(out, str) and out.startswith("s3"):
-                out_ = f"{out}/{file}"
-            else:
-                out_ = pathlib.Path(out)
-                out_.mkdir(exist_ok=True, parents=True)
-                out_ = str(out_ / file)
-
+            outfile = (
+                path
+                / table
+                / f"{table}_{datetime.datetime.now().isoformat().split('.')[0]}.json"
+            )
+            fs.makedirs(outfile.parent, exist_ok=True)
             df.to_pandas().to_json(
-                out_,
-                compression=compression.value,
+                outfile,
                 date_format="iso",
                 orient="records",
                 lines=True,
             )
-            print(f"Finished exporting table {table}! to {out_}")
-        print("Finished exporting all data!")
+            print(f"Exported table {table} to {outfile}")
+        print("Finished exporting all data")
 
 
-def _alter_tables(con):
-    """
-    Temporary, used for debugging performance in data types.
-
-    ref discussion here: https://github.com/coiled/benchmarks/pull/1131
-    """
-    tables = [
-        "nation",
-        "region",
-        "customer",
-        "supplier",
-        "lineitem",
-        "orders",
-        "partsupp",
-        "part",
-    ]
-    for table in tables:
-        schema = con.sql(f"describe {table}").arrow()
-
-        # alter decimals to floats
-        for column in schema.filter(
-            pc.match_like(pc.field("column_type"), "DECIMAL%")
-        ).column("column_name"):
-            con.sql(f"alter table {table} alter {column} type double")
-
-        # alter date to timestamp_s
-        for column in schema.filter(pc.field("column_type") == "DATE").column(
-            "column_name"
-        ):
-            con.sql(f"alter table {table} alter {column} type timestamp_s")
-
-
-@flow(log_prints=True)
-def generate_data(data_dir):
-    fs.makedirs(data_dir, exist_ok=True)
+@flow
+def generate_data():
     generate(
         scale=0.01,
-        path=data_dir,
-        relaxed_schema=True,
+        path=STAGING_JSON_DIR,
     )
 
 
 if __name__ == "__main__":
     generate_data.serve(
         name="generate_data",
-        parameters={"data_dir": STAGING_JSON_DIR},
         interval=timedelta(seconds=20),
     )
