@@ -15,7 +15,7 @@ import psutil
 import pyarrow.compute as pc
 from prefect import flow
 
-from pipeline.files import STAGING_JSON_DIR, get_filesystem
+from pipeline.files import STAGING_JSON_DIR, fs
 
 REGION = None
 
@@ -275,7 +275,6 @@ def get_bucket_region(path: str):
 
 @flow(log_prints=True)
 def generate_data(data_dir):
-    fs = get_filesystem(data_dir)
     fs.makedirs(data_dir, exist_ok=True)
     generate(
         scale=1,

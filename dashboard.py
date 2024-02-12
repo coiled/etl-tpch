@@ -8,7 +8,7 @@ from pipeline.files import REDUCED_DATA_DIR
 @st.cache_data
 def get_data(region, part_type):
     return dd.read_parquet(
-        f"{REDUCED_DATA_DIR}/{region}/{part_type.upper()}/*.parquet"
+        REDUCED_DATA_DIR / region / part_type.upper() / "*.parquet"
     ).compute()
 
 

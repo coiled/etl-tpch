@@ -1,14 +1,14 @@
-import glob
 import itertools
-import os
-import shutil
+import operator
 import uuid
 
+import coiled
 import dask_expr as dd
 from filelock import FileLock
 from prefect import flow, task
 
-from .files import PROCESSED_DATA_DIR, RAW_PARQUET_DIR, STAGING_PARQUET_DIR
+from .files import PROCESSED_DATA_DIR, RAW_PARQUET_DIR, STAGING_PARQUET_DIR, fs
+from .settings import LOCAL
 
 # TODO: Couldn't figure out how to limit concurrent flow runs
 # in Prefect, so am using a file lock...
@@ -16,11 +16,12 @@ lock = FileLock("resize.lock")
 
 
 @task
-def repartition_table(table, files):
+@coiled.function(local=LOCAL)
+def repartition_table(files, table):
     df = dd.read_parquet(files)
     df = df.repartition(partition_size="128 MiB")
-    outdir = os.path.join(PROCESSED_DATA_DIR, table)
-    os.makedirs(outdir, exist_ok=True)
+    outdir = PROCESSED_DATA_DIR / table
+    fs.makedirs(outdir, exist_ok=True)
 
     def name(_):
         return f"{table}_{uuid.uuid4()}.snappy.parquet"
@@ -32,22 +33,21 @@ def repartition_table(table, files):
 def archive_parquet_files(files):
     # Move original staged files to long-term storage
     for file in files:
-        path, basename = os.path.split(file)
-        outfile = os.path.join(
-            path.replace(str(STAGING_PARQUET_DIR), str(RAW_PARQUET_DIR)), basename
-        )
-        os.makedirs(os.path.dirname(outfile), exist_ok=True)
-        shutil.move(file, outfile)
+        outfile = RAW_PARQUET_DIR / file.relative_to(STAGING_PARQUET_DIR)
+        fs.makedirs(outfile.parent, exist_ok=True)
+        # Need str(...), otherwise, `TypeError: 'S3Path' object is not iterable`
+        fs.mv(str(file), str(outfile))
+        print(f"Archived {str(outfile)}")
 
 
 @flow(log_prints=True)
 def resize_parquet():
     """Repartition small Parquet files for future analysis"""
     with lock:
-        files = glob.glob(
-            os.path.join(STAGING_PARQUET_DIR, "**", "*.parquet"), recursive=True
-        )
-        for outdir, group in itertools.groupby(files, key=os.path.dirname):
-            files = list(group)
-            repartition_table(table=os.path.basename(outdir), files=files)
-            archive_parquet_files(files)
+        files = list(STAGING_PARQUET_DIR.rglob("*.parquet"))
+        for table, group in itertools.groupby(
+            files, key=operator.attrgetter("parent.stem")
+        ):
+            files_ = list(group)
+            futures = repartition_table.submit(files_, table=table)
+            archive_parquet_files.submit(files_, wait_for=futures)
