@@ -17,6 +17,7 @@ import pyarrow.compute as pc
 from prefect import flow
 
 from pipeline.files import STAGING_JSON_DIR, fs
+from pipeline.settings import LOCAL
 
 REGION = None
 
@@ -30,6 +31,7 @@ class CompressionCodec(enum.Enum):
     NONE = None
 
 
+@coiled.function(local=LOCAL, region="us-east-1")
 def generate(
     scale: float = 0.1,
     path: str = "./tpch-data",
