@@ -1,16 +1,11 @@
 import datetime
 import enum
-import functools
 import pathlib
-import tempfile
-import uuid
-import warnings
 from datetime import timedelta
 
 import boto3
 import botocore.session
 import coiled
-import dask
 import duckdb
 import psutil
 import pyarrow.compute as pc
@@ -43,9 +38,7 @@ def generate(
         global REGION
         REGION = get_bucket_region(path)
     else:
-        path = (
-            pathlib.Path(path)
-        )
+        path = pathlib.Path(path)
         # path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
 
@@ -100,9 +93,7 @@ def generate(
             else:
                 out = path / table
 
-            stmt = (
-                f"""select * from {table}"""
-            )
+            stmt = f"""select * from {table}"""
             df = con.sql(stmt).arrow()
 
             file = f"{table}_{datetime.datetime.now().isoformat()}.json"
@@ -114,7 +105,9 @@ def generate(
                 out_ = str(out_ / file)
 
             df.to_pandas().to_json(
-                out_, compression=compression.value, date_format="iso",
+                out_,
+                compression=compression.value,
+                date_format="iso",
                 orient="records",
                 lines=True,
             )
