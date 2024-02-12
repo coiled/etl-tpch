@@ -1,5 +1,4 @@
 import datetime
-import enum
 import pathlib
 from datetime import timedelta
 
@@ -8,7 +7,6 @@ import botocore.session
 import coiled
 import duckdb
 import psutil
-import pyarrow.compute as pc
 from prefect import flow, task
 
 from pipeline.files import STAGING_JSON_DIR, fs
@@ -38,9 +36,7 @@ def generate(scale: float, path: str) -> str:
                 """
             )
         else:
-            path = (
-                pathlib.Path(path)
-            )
+            path = pathlib.Path(path)
             path.mkdir(parents=True, exist_ok=True)
 
         con.sql(
