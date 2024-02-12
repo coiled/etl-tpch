@@ -3,13 +3,14 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - dask
+  - dask >=2024.2.0
   - dask-expr
   - coiled
   - zstandard
   - python-duckdb
   - xgboost
   - fastapi
+  - plotly
   - prefect
   - filelock
   - streamlit

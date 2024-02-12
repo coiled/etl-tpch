@@ -1,15 +1,25 @@
 import itertools
-import os
 import uuid
 
+import coiled
 import dask_expr as dd
+from dask.distributed import LocalCluster
 from prefect import flow, task
 
-from .files import PROCESSED_DATA_DIR, REDUCED_DATA_DIR
+from .files import PROCESSED_DATA_DIR, REDUCED_DATA_DIR, fs
+from .settings import LOCAL
 
 
 @task
 def save_query(region, part_type):
+
+    if LOCAL:
+        cluster = LocalCluster()
+    else:
+        # TODO: Add specifics about the cluster
+        cluster = coiled.Cluster(region="us-east-1")
+
+    client = cluster.get_client()
     size = 15
     region_ds = dd.read_parquet(PROCESSED_DATA_DIR / "region")
     nation_filtered = dd.read_parquet(PROCESSED_DATA_DIR / "nation")
@@ -76,8 +86,8 @@ def save_query(region, part_type):
         .head(100, compute=False)
     )
 
-    outdir = os.path.join(REDUCED_DATA_DIR, region, part_type)
-    os.makedirs(outdir, exist_ok=True)
+    outdir = REDUCED_DATA_DIR / region / part_type
+    fs.makedirs(outdir, exist_ok=True)
 
     def name(_):
         return f"{uuid.uuid4()}.snappy.parquet"
