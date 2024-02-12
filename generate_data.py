@@ -1,3 +1,4 @@
+import datetime
 import enum
 import functools
 import pathlib
@@ -16,108 +17,40 @@ import pyarrow.compute as pc
 from prefect import flow
 
 from pipeline.files import STAGING_JSON_DIR, fs
+from pipeline.settings import LOCAL
 
 REGION = None
 
 
 class CompressionCodec(enum.Enum):
-    SNAPPY = "SNAPPY"
-    LZ4 = "LZ4"
-    ZSTD = "ZSTD"
-    GZIP = "GZIP"
-    BROTLI = "BROTLI"
-    NONE = "NONE"
+    SNAPPY = "snappy"
+    LZ4 = "lz4"
+    ZSTD = "zstd"
+    GZIP = "gzip"
+    BROTLI = "brotli"
+    NONE = None
 
 
+@coiled.function(local=LOCAL, region="us-east-1")
 def generate(
-    scale: int = 10,
-    partition_size: str = "128 MiB",
+    scale: float = 0.1,
     path: str = "./tpch-data",
     relaxed_schema: bool = False,
-    compression: CompressionCodec = CompressionCodec.SNAPPY,
+    compression: CompressionCodec = CompressionCodec.NONE,
 ) -> str:
     if str(path).startswith("s3"):
         path += "/" if not path.endswith("/") else ""
-        path += f"scale-{scale}{'-strict' if not relaxed_schema else ''}/"
-        use_coiled = True
         global REGION
         REGION = get_bucket_region(path)
     else:
         path = (
             pathlib.Path(path)
-            / f"scale-{scale}{'-strict' if not relaxed_schema else ''}/"
         )
         # path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        use_coiled = False
 
-    print(f"Scale: {scale}, Path: {path}, Partition Size: {partition_size}")
-    kwargs = dict(
-        scale=scale,
-        path=path,
-        relaxed_schema=relaxed_schema,
-        partition_size=partition_size,
-        compression=compression,
-    )
+    print(f"Scale: {scale}, Path: {path}")
 
-    if use_coiled:
-        with coiled.Cluster(
-            n_workers=10,
-            # workload is best with 1vCPU and ~3-4GiB memory
-            worker_vm_types=["m7a.medium", "m3.medium"],
-            worker_options={"nthreads": 1},
-            region=REGION,
-        ) as cluster:
-            cluster.adapt(minimum=1, maximum=350)
-            with cluster.get_client() as client:
-                jobs = client.map(_tpch_data_gen, range(0, scale), **kwargs)
-                client.gather(jobs)
-    else:
-        _tpch_data_gen(step=None, **kwargs)
-    return str(path)
-
-
-def retry(f):
-    @functools.wraps(f)
-    def _(*args, **kwargs):
-        for _ in range(5):
-            try:
-                return f(*args, **kwargs)
-            except Exception as exc:
-                warnings.warn(f"Failed w/ {exc}, retrying...")
-                continue
-        return f(*args, **kwargs)
-
-    return _
-
-
-@retry
-def _tpch_data_gen(
-    step: int,
-    scale: int,
-    path: str,
-    partition_size: str,
-    relaxed_schema: bool,
-    compression: CompressionCodec,
-):
-    """
-    Run TPC-H dbgen for generating the <step>th part of a multi-part load or update set
-    into an output directory.
-
-    step: Union[int, None]
-        Generate the <n>th part of a multi-part load or update set in this scale, if None
-        then generate the whole scale in one call.
-    scale: int
-        The TPC-H scale to generate
-    path: str
-        Output path of the generated parquet files
-    partition_size: str
-        Target parquet file output size. Some files may be smaller than this, when the remaining
-        data from a given table is less than this size.
-    relaxed_schema: bool
-        To cast certain datatypes like `date` or `decimal` types to `timestamp_s` and `double`;
-        this flag will call the casting done in `_alter_tables` function before outputting parquet files.
-    """
     with duckdb.connect() as con:
         con.install_extension("tpch")
         con.load_extension("tpch")
@@ -146,10 +79,7 @@ def _tpch_data_gen(
         )
 
         print("Generating TPC-H data")
-        if step is None:
-            query = f"call dbgen(sf={scale})"
-        else:
-            query = f"call dbgen(sf={scale}, children={scale}, step={step})"
+        query = f"call dbgen(sf={scale})"
         con.sql(query)
         print("Finished generating data, exporting...")
 
@@ -170,65 +100,26 @@ def _tpch_data_gen(
             else:
                 out = path / table
 
-            # TODO: duckdb doesn't (yet) support writing parquet files by limited file size
-            #       so we estimate the page size required for each table to get files of about a target size
-            n_rows_total = con.sql(f"select count(*) from {table}").fetchone()[0]
-            n_rows_per_page = rows_approx_mb(
-                con, table, partition_size=partition_size, compression=compression
+            stmt = (
+                f"""select * from {table}"""
             )
-            if n_rows_total == 0:
-                continue  # In case of step based production, some tables may already be fully generated
+            df = con.sql(stmt).arrow()
 
-            for offset in range(0, n_rows_total, n_rows_per_page):
-                print(
-                    f"Start Exporting Page from {table} - Page {offset} - {offset + n_rows_per_page}"
-                )
-                stmt = (
-                    f"""select * from {table} offset {offset} limit {n_rows_per_page}"""
-                )
-                df = con.sql(stmt).arrow()
+            file = f"{table}_{datetime.datetime.now().isoformat()}.json"
+            if isinstance(out, str) and out.startswith("s3"):
+                out_ = f"{out}/{file}"
+            else:
+                out_ = pathlib.Path(out)
+                out_.mkdir(exist_ok=True, parents=True)
+                out_ = str(out_ / file)
 
-                # DuckDB doesn't support LZ4, and we want to use PyArrow to handle
-                # compression codecs.
-                # ref: https://github.com/duckdb/duckdb/discussions/8950
-                # ref: https://github.com/coiled/benchmarks/pull/1209#issuecomment-1829620531
-                file = f"{table}_{uuid.uuid4()}.{compression.value.lower()}.json"
-                # file = f"{table}_{uuid.uuid4()}.{compression.value.lower()}.parquet"
-                if isinstance(out, str) and out.startswith("s3"):
-                    out_ = f"{out}/{file}"
-                else:
-                    out_ = pathlib.Path(out)
-                    out_.mkdir(exist_ok=True, parents=True)
-                    out_ = str(out_ / file)
-                df.to_pandas().to_json(
-                    out_, compression=compression.value.lower(), date_format="iso"
-                )
-                print(f"Saved {out_}")
-            print(f"Finished exporting table {table}!")
+            df.to_pandas().to_json(
+                out_, compression=compression.value, date_format="iso",
+                orient="records",
+                lines=True,
+            )
+            print(f"Finished exporting table {table}! to {out_}")
         print("Finished exporting all data!")
-
-
-def rows_approx_mb(con, table_name, partition_size: str, compression: CompressionCodec):
-    """
-    Estimate the number of rows from this table required to
-    result in a parquet file output size of `partition_size`
-    """
-    partition_size = dask.utils.parse_bytes(partition_size)
-    sample_size = 10_000
-    table = con.sql(f"select * from {table_name} limit {sample_size}").arrow()
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp = pathlib.Path(tmpdir) / "tmp.json"
-        # tmp = pathlib.Path(tmpdir) / "tmp.parquet"
-        stmt = f"select * from {table_name} limit {sample_size}"
-        df = con.sql(stmt).arrow()
-        df.to_pandas().to_json(
-            tmp, compression=compression.value.lower(), date_format="iso"
-        )
-        mb = tmp.stat().st_size
-    return int(
-        (len(table) * ((len(table) / sample_size) * partition_size)) / mb
-    ) or len(table)
 
 
 def _alter_tables(con):
@@ -277,11 +168,9 @@ def get_bucket_region(path: str):
 def generate_data(data_dir):
     fs.makedirs(data_dir, exist_ok=True)
     generate(
-        scale=1,
-        partition_size="10 MiB",
+        scale=0.01,
         path=data_dir,
         relaxed_schema=True,
-        compression=CompressionCodec.ZSTD,
     )
 
 
@@ -289,5 +178,5 @@ if __name__ == "__main__":
     generate_data.serve(
         name="generate_data",
         parameters={"data_dir": STAGING_JSON_DIR},
-        interval=timedelta(seconds=30),
+        interval=timedelta(seconds=20),
     )

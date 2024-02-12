@@ -16,7 +16,7 @@ lock = FileLock("preprocess.lock")
 def convert_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")
-    df = pd.read_json(file, compression="zstd")
+    df = pd.read_json(file, lines=True, engine="pyarrow")
     outfile = STAGING_PARQUET_DIR / file.relative_to(STAGING_JSON_DIR).with_suffix(
         ".snappy.parquet"
     )
