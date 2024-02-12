@@ -10,6 +10,7 @@ dependencies:
   - python-duckdb
   - xgboost
   - fastapi
+  - plotly
   - prefect
   - filelock
   - streamlit
