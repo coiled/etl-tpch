@@ -1,5 +1,4 @@
 from pydoc import locate
-from typing import List
 
 import numpy as np
 import uvicorn
@@ -32,8 +31,8 @@ InputFeatures = create_input_features_class(model)
 app = FastAPI()
 
 
-@app.get("/predict", response_model=List)
-async def predict_post(datas: List[InputFeatures]):
+@app.get("/predict", response_model=list)
+async def predict_post(datas: list[InputFeatures]):
     return model.predict(
         np.asarray([list(data.__dict__.values()) for data in datas])
     ).tolist()
