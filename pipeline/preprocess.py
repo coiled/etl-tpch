@@ -1,14 +1,10 @@
 import coiled
+import deltalake
 import pandas as pd
-from filelock import FileLock
 from prefect import flow, task
 
 from .files import RAW_JSON_DIR, STAGING_JSON_DIR, STAGING_PARQUET_DIR, fs
 from .settings import LOCAL
-
-# TODO: Couldn't figure out how to limit concurrent flow runs
-# in Prefect, so am using a file lock...
-lock = FileLock("preprocess.lock")
 
 
 @task(log_prints=True)
@@ -17,11 +13,9 @@ def convert_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")
     df = pd.read_json(file, lines=True, engine="pyarrow")
-    outfile = STAGING_PARQUET_DIR / file.relative_to(STAGING_JSON_DIR).with_suffix(
-        ".snappy.parquet"
-    )
+    outfile = STAGING_PARQUET_DIR / file.parent.name
     fs.makedirs(outfile.parent, exist_ok=True)
-    df.to_parquet(outfile, compression="snappy")
+    deltalake.write_deltalake(outfile, df, mode="append")
     print(f"Saved {outfile}")
     return outfile
 
@@ -30,14 +24,36 @@ def convert_to_parquet(file):
 def archive_json_file(file):
     outfile = RAW_JSON_DIR / file.relative_to(STAGING_JSON_DIR)
     fs.makedirs(outfile.parent, exist_ok=True)
-    # Need str(...), otherwise, `TypeError: 'S3Path' object is not iterable`
     fs.mv(str(file), str(outfile))
     print(f"Archived {str(outfile)}")
 
 
+@task
+def files_to_convert():
+    return list(STAGING_JSON_DIR.rglob("*.json"))
+
+
 @flow(log_prints=True)
 def json_to_parquet():
-    with lock:
-        files = list(STAGING_JSON_DIR.rglob("*.json"))
-        parquet_files = convert_to_parquet.map(files)
-        archive_json_file.map(files, wait_for=parquet_files)
+    files = files_to_convert()
+    parquet_files = convert_to_parquet.map(files)
+    archive_json_file.map(files, wait_for=parquet_files)
+
+
+@task
+def compact(table):
+    print("Compacting table {table}")
+    t = deltalake.DeltaTable(table)
+    t.optimize.compact()
+
+
+@task
+def list_tables():
+    directories = fs.ls(STAGING_PARQUET_DIR)
+    return directories
+
+
+@flow(log_prints=True)
+def compact_tables():
+    tables = list_tables()
+    compact.map(tables)
