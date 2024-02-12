@@ -15,7 +15,8 @@ def save_query(region, part_type):
     if LOCAL:
         cluster = LocalCluster()
     else:
-        cluster = coiled.Cluster(**coiled_options)
+        kwargs = {k: v for k, v in coiled_options.items() if k != "local"}
+        cluster = coiled.Cluster(**kwargs)
 
     client = cluster.get_client()  # noqa: F841
     size = 15

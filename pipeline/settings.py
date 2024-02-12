@@ -28,6 +28,7 @@ MODEL_FILE = ROOT.parent / "model.json"
 MODEL_SERVER_FILE = ROOT.parent / "serve_model.py"
 
 coiled_options = {
+    "local": LOCAL,
     "region": REGION,
     "tags": {"workflow": "etl-tpch"},
 }
