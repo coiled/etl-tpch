@@ -3,8 +3,13 @@ import pandas as pd
 from filelock import FileLock
 from prefect import flow, task
 
-from .files import RAW_JSON_DIR, STAGING_JSON_DIR, STAGING_PARQUET_DIR, fs
-from .settings import LOCAL
+from .settings import (
+    RAW_JSON_DIR,
+    STAGING_JSON_DIR,
+    STAGING_PARQUET_DIR,
+    coiled_options,
+    fs,
+)
 
 # TODO: Couldn't figure out how to limit concurrent flow runs
 # in Prefect, so am using a file lock...
@@ -12,7 +17,7 @@ lock = FileLock("preprocess.lock")
 
 
 @task(log_prints=True)
-@coiled.function(local=LOCAL)
+@coiled.function(**coiled_options)
 def convert_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")

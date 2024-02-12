@@ -2,7 +2,7 @@ import dask.dataframe as dd
 import plotly.express as px
 import streamlit as st
 
-from pipeline.files import REDUCED_DATA_DIR
+from pipeline.settings import REDUCED_DATA_DIR
 
 
 @st.cache_data

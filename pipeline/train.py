@@ -5,12 +5,11 @@ import pandas as pd
 import xgboost as xgb
 from prefect import flow, task
 
-from .files import MODEL_FILE, REDUCED_DATA_DIR, Path, fs
-from .settings import LOCAL
+from .settings import MODEL_FILE, REDUCED_DATA_DIR, Path, coiled_options, fs
 
 
 @task
-@coiled.function(local=LOCAL)
+@coiled.function(**coiled_options)
 def train():
     df = pd.read_parquet(REDUCED_DATA_DIR / "europe" / "brass")
     X = df[["p_partkey", "s_acctbal"]]
