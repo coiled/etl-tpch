@@ -1,16 +1,11 @@
 import datetime
 import enum
-import functools
 import pathlib
-import tempfile
-import uuid
-import warnings
 from datetime import timedelta
 
 import boto3
 import botocore.session
 import coiled
-import dask
 import duckdb
 import psutil
 import pyarrow.compute as pc
@@ -74,9 +69,7 @@ def generate(scale: float, path: str) -> str:
             else:
                 out = path / table
 
-            stmt = (
-                f"""select * from {table}"""
-            )
+            stmt = f"""select * from {table}"""
             df = con.sql(stmt).arrow()
 
             file = f"{table}_{datetime.datetime.now().isoformat().split('.')[0]}.json"

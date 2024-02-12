@@ -19,7 +19,7 @@ def save_query(region, part_type):
         # TODO: Add specifics about the cluster
         cluster = coiled.Cluster(region="us-east-1")
 
-    client = cluster.get_client()
+    client = cluster.get_client()  # noqa: F841
     size = 15
     region_ds = dd.read_parquet(PROCESSED_DATA_DIR / "region")
     nation_filtered = dd.read_parquet(PROCESSED_DATA_DIR / "nation")
