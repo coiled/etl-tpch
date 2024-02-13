@@ -10,7 +10,7 @@ from pipeline.train import update_model
 if __name__ == "__main__":
     preprocess = json_to_parquet.to_deployment(
         name="preprocess",
-        interval=timedelta(seconds=30),
+        interval=timedelta(seconds=60),
     )
     compact = compact_tables.to_deployment(
         name="compact",
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     serve(
         preprocess,
         compact,
-        reduce,
+        # reduce,
         # train,
         # monitor,
     )

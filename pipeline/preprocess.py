@@ -9,7 +9,7 @@ from .settings import LOCAL
 
 @task(log_prints=True)
 @coiled.function(local=LOCAL)
-def convert_to_parquet(file):
+def json_file_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")
     df = pd.read_json(file, lines=True, engine="pyarrow")
@@ -17,27 +17,29 @@ def convert_to_parquet(file):
     fs.makedirs(outfile.parent, exist_ok=True)
     deltalake.write_deltalake(outfile, df, mode="append")
     print(f"Saved {outfile}")
-    return outfile
+    return file
 
 
 @task
+@coiled.function(local=LOCAL)
 def archive_json_file(file):
     outfile = RAW_JSON_DIR / file.relative_to(STAGING_JSON_DIR)
     fs.makedirs(outfile.parent, exist_ok=True)
     fs.mv(str(file), str(outfile))
     print(f"Archived {str(outfile)}")
 
+    return outfile
 
-@task
-def files_to_convert():
+
+def list_new_json_files():
     return list(STAGING_JSON_DIR.rglob("*.json"))
 
 
 @flow(log_prints=True)
 def json_to_parquet():
-    files = files_to_convert()
-    parquet_files = convert_to_parquet.map(files)
-    archive_json_file.map(files, wait_for=parquet_files)
+    files = list_new_json_files()
+    files = json_file_to_parquet.map(files)
+    archive_json_file.map(files)
 
 
 @task
