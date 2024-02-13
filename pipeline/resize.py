@@ -8,10 +8,11 @@ from filelock import FileLock
 from prefect import flow, task
 
 from .settings import (
+    LOCAL,
     PROCESSED_DATA_DIR,
     RAW_PARQUET_DIR,
+    REGION,
     STAGING_PARQUET_DIR,
-    coiled_options,
     fs,
 )
 
@@ -21,7 +22,11 @@ lock = FileLock("resize.lock")
 
 
 @task
-@coiled.function(**coiled_options)
+@coiled.function(
+    local=LOCAL,
+    region=REGION,
+    tags={"workflow": "etl-tpch"},
+)
 def repartition_table(files, table):
     df = dd.read_parquet(files)
     df = df.repartition(partition_size="128 MiB")

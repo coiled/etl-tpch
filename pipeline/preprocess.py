@@ -4,10 +4,11 @@ from filelock import FileLock
 from prefect import flow, task
 
 from .settings import (
+    LOCAL,
     RAW_JSON_DIR,
+    REGION,
     STAGING_JSON_DIR,
     STAGING_PARQUET_DIR,
-    coiled_options,
     fs,
 )
 
@@ -17,7 +18,11 @@ lock = FileLock("preprocess.lock")
 
 
 @task(log_prints=True)
-@coiled.function(**coiled_options)
+@coiled.function(
+    local=LOCAL,
+    region=REGION,
+    tags={"workflow": "etl-tpch"},
+)
 def convert_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")

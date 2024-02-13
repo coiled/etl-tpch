@@ -8,11 +8,15 @@ import duckdb
 import psutil
 from prefect import flow, task
 
-from pipeline.settings import REGION, STAGING_JSON_DIR, coiled_options, fs
+from pipeline.settings import LOCAL, REGION, STAGING_JSON_DIR, fs
 
 
 @task(log_prints=True)
-@coiled.function(**coiled_options)
+@coiled.function(
+    local=LOCAL,
+    region=REGION,
+    tags={"workflow": "etl-tpch"},
+)
 def generate(scale: float, path: os.PathLike) -> None:
     with duckdb.connect() as con:
         con.install_extension("tpch")

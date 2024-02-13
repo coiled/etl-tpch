@@ -5,11 +5,15 @@ import pandas as pd
 import xgboost as xgb
 from prefect import flow, task
 
-from .settings import MODEL_FILE, REDUCED_DATA_DIR, Path, coiled_options, fs
+from .settings import LOCAL, MODEL_FILE, REDUCED_DATA_DIR, REGION, Path, fs
 
 
 @task
-@coiled.function(**coiled_options)
+@coiled.function(
+    local=LOCAL,
+    region=REGION,
+    tags={"workflow": "etl-tpch"},
+)
 def train():
     df = pd.read_parquet(REDUCED_DATA_DIR / "europe" / "brass")
     X = df[["p_partkey", "s_acctbal"]]
