@@ -8,28 +8,16 @@ Create a software environment:
 mamba env create -f environment.yml
 ```
 
-Then start regularly generating TPC-H data locally:
+Then run each command below in separate terminal windows:
 
 ```bash
-python generate_data.py
+python serve_model.py       # Serve ML model
 ```
-
-Then, in a separate terminal window, serve our ML model:
-
 ```bash
-python serve_model.py
+python pipeline.py          # Run ETL pipeline
 ```
-
-Then, in yet another terminal window, run the ETL pipeline:
-
 ```bash
-python pipeline.py
-```
-
-Then, in yet another terminal window, serve the data dashboard:
-
-```bash
-streamlit run dashboard.py
+streamlit run dashboard.py  # Serve dashboard
 ```
 
 Watch things run, both in your terminals and on Prefect cloud, and then ctrl-C to shut everything down.
