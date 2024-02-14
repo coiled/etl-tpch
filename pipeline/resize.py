@@ -7,8 +7,14 @@ import dask_expr as dd
 from filelock import FileLock
 from prefect import flow, task
 
-from .files import PROCESSED_DATA_DIR, RAW_PARQUET_DIR, STAGING_PARQUET_DIR, fs
-from .settings import LOCAL
+from .settings import (
+    LOCAL,
+    PROCESSED_DATA_DIR,
+    RAW_PARQUET_DIR,
+    REGION,
+    STAGING_PARQUET_DIR,
+    fs,
+)
 
 # TODO: Couldn't figure out how to limit concurrent flow runs
 # in Prefect, so am using a file lock...
@@ -16,7 +22,11 @@ lock = FileLock("resize.lock")
 
 
 @task
-@coiled.function(local=LOCAL)
+@coiled.function(
+    local=LOCAL,
+    region=REGION,
+    tags={"workflow": "etl-tpch"},
+)
 def repartition_table(files, table):
     df = dd.read_parquet(files)
     df = df.repartition(partition_size="128 MiB")
