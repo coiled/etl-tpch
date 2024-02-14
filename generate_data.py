@@ -1,6 +1,5 @@
 import datetime
 import os
-import pathlib
 from datetime import timedelta
 
 import botocore.session
@@ -36,9 +35,6 @@ def generate(scale: float, path: os.PathLike) -> None:
                 SET s3_session_token='{creds.token}';
                 """
             )
-        else:
-            path = pathlib.Path(path)
-            path.mkdir(parents=True, exist_ok=True)
 
         con.sql(
             f"""
