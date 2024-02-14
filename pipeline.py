@@ -32,7 +32,7 @@ if __name__ == "__main__":
     serve(
         preprocess,
         compact,
-        # reduce,
-        # train,
-        # monitor,
+        reduce,
+        train,
+        monitor,
     )
