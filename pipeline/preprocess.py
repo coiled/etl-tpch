@@ -3,12 +3,22 @@ import deltalake
 import pandas as pd
 from prefect import flow, task
 
-from .files import RAW_JSON_DIR, STAGING_JSON_DIR, STAGING_PARQUET_DIR, fs
-from .settings import LOCAL
+from .settings import (
+    LOCAL,
+    RAW_JSON_DIR,
+    REGION,
+    STAGING_JSON_DIR,
+    STAGING_PARQUET_DIR,
+    fs,
+)
 
 
 @task(log_prints=True)
-@coiled.function(local=LOCAL)
+@coiled.function(
+    local=LOCAL,
+    region=REGION,
+    tags={"workflow": "etl-tpch"},
+)
 def json_file_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")

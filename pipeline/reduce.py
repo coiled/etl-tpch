@@ -7,8 +7,7 @@ import dask_deltatable
 from dask.distributed import LocalCluster
 from prefect import flow, task
 
-from .files import REDUCED_DATA_DIR, STAGING_PARQUET_DIR, fs
-from .settings import LOCAL
+from .settings import LOCAL, REDUCED_DATA_DIR, REGION, STAGING_PARQUET_DIR, fs
 
 
 @task
@@ -17,7 +16,9 @@ def save_query(region, part_type):
     if LOCAL:
         cluster = LocalCluster
     else:
-        cluster = functools.partial(coiled.Cluster, region="us-east-1")
+        cluster = functools.partial(
+            coiled.Cluster, region=REGION, tags={"workflow": "etl-tpch"}
+        )
 
     with cluster() as cluster:
         with cluster.get_client():

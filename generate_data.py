@@ -3,26 +3,27 @@ import os
 import pathlib
 from datetime import timedelta
 
-import boto3
 import botocore.session
 import coiled
 import duckdb
 import psutil
 from prefect import flow, task
 
-from pipeline.files import STAGING_JSON_DIR, fs
-from pipeline.settings import LOCAL
+from pipeline.settings import LOCAL, REGION, STAGING_JSON_DIR, fs
 
 
 @task(log_prints=True)
-@coiled.function(local=LOCAL, region="us-east-1")
+@coiled.function(
+    local=LOCAL,
+    region=REGION,
+    tags={"workflow": "etl-tpch"},
+)
 def generate(scale: float, path: os.PathLike) -> None:
     with duckdb.connect() as con:
         con.install_extension("tpch")
         con.load_extension("tpch")
 
         if str(path).startswith("s3://"):
-            REGION = get_bucket_region(path)
             session = botocore.session.Session()
             creds = session.get_credentials()
             con.install_extension("httpfs")
@@ -77,15 +78,6 @@ def generate(scale: float, path: os.PathLike) -> None:
             )
             print(f"Exported table {table} to {outfile}")
         print("Finished exporting all data")
-
-
-def get_bucket_region(path: str):
-    path = str(path)
-    if not path.startswith("s3://"):
-        raise ValueError(f"'{path}' is not an S3 path")
-    bucket = path.replace("s3://", "").split("/")[0]
-    resp = boto3.client("s3").get_bucket_location(Bucket=bucket)
-    return resp["LocationConstraint"] or "us-east-1"
 
 
 @flow
