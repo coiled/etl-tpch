@@ -16,3 +16,4 @@ dependencies:
   - streamlit
   - s3fs
   - universal_pathlib
+  - boto3

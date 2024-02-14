@@ -6,7 +6,7 @@ import xgboost as xgb
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from pipeline.files import MODEL_FILE, fs
+from pipeline.settings import MODEL_FILE, fs
 
 model = xgb.XGBClassifier()
 with fs.open(MODEL_FILE, mode="rb") as f:

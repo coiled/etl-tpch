@@ -6,8 +6,7 @@ import dask_expr as dd
 from dask.distributed import LocalCluster
 from prefect import flow, task
 
-from .files import PROCESSED_DATA_DIR, REDUCED_DATA_DIR, fs
-from .settings import LOCAL
+from .settings import LOCAL, PROCESSED_DATA_DIR, REDUCED_DATA_DIR, REGION, fs
 
 
 @task
@@ -16,8 +15,10 @@ def save_query(region, part_type):
     if LOCAL:
         cluster = LocalCluster()
     else:
-        # TODO: Add specifics about the cluster
-        cluster = coiled.Cluster(region="us-east-1")
+        cluster = coiled.Cluster(
+            region=REGION,
+            tags={"workflow": "etl-tpch"},
+        )
 
     client = cluster.get_client()  # noqa: F841
     size = 15
