@@ -3,11 +3,14 @@ import itertools
 import uuid
 
 import coiled
+import dask
 import dask_deltatable
 from dask.distributed import LocalCluster
 from prefect import flow, task
 
 from .settings import LOCAL, REDUCED_DATA_DIR, REGION, STAGING_PARQUET_DIR, fs
+
+dask.config.set({"coiled.use_aws_creds_endpoint": False})
 
 
 @task
