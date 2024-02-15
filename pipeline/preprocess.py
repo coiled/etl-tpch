@@ -2,6 +2,7 @@ import coiled
 import dask
 import deltalake
 import pandas as pd
+import pyarrow as pa
 from prefect import flow, task
 from prefect.tasks import exponential_backoff
 
@@ -36,8 +37,9 @@ def json_file_to_parquet(file):
     df = pd.read_json(file, lines=True)
     outfile = STAGING_PARQUET_DIR / file.parent.name
     fs.makedirs(outfile.parent, exist_ok=True)
+    data = pa.Table.from_pandas(df, preserve_index=False)
     deltalake.write_deltalake(
-        outfile, df, mode="append", storage_options=storage_options
+        outfile, data, mode="append", storage_options=storage_options
     )
     print(f"Saved {outfile}")
     return file
