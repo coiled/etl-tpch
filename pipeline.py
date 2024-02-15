@@ -2,12 +2,17 @@ from datetime import timedelta
 
 from prefect import serve
 
+from pipeline.data import generate_data
 from pipeline.monitor import check_model_endpoint
 from pipeline.preprocess import compact_tables, json_to_parquet
 from pipeline.reduce import query_reduce
 from pipeline.train import update_model
 
 if __name__ == "__main__":
+    data = generate_data.to_deployment(
+        name="generate_data",
+        interval=timedelta(seconds=20),
+    )
     preprocess = json_to_parquet.to_deployment(
         name="preprocess",
         interval=timedelta(seconds=60),
@@ -30,6 +35,7 @@ if __name__ == "__main__":
     )
 
     serve(
+        data,
         preprocess,
         compact,
         reduce,

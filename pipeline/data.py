@@ -1,6 +1,5 @@
 import datetime
 import os
-from datetime import timedelta
 
 import botocore.session
 import coiled
@@ -81,11 +80,4 @@ def generate_data():
     generate(
         scale=0.01,
         path=STAGING_JSON_DIR,
-    )
-
-
-if __name__ == "__main__":
-    generate_data.serve(
-        name="generate_data",
-        interval=timedelta(seconds=20),
     )
