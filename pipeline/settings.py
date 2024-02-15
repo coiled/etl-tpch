@@ -9,6 +9,7 @@ if LOCAL:
     ROOT = Path(__file__).parent.parent.resolve() / "data"
     fs = fsspec.filesystem("local")
     REGION = None
+    storage_options = {}
 else:
     # TODO: Make the cloud path nicer (e.g. s3://coiled-datasets-rp)
     ROOT = Path("s3://oss-scratch-space/jrbourbeau/etl-tpch/data")
@@ -17,6 +18,7 @@ else:
     bucket = str(ROOT).replace("s3://", "").split("/")[0]
     resp = boto3.client("s3").get_bucket_location(Bucket=bucket)
     REGION = resp["LocationConstraint"] or "us-east-1"
+    storage_options = {"AWS_REGION": REGION, "AWS_S3_ALLOW_UNSAFE_RENAME": "true"}
 
 STAGING_JSON_DIR = ROOT / "staged" / "json"
 STAGING_PARQUET_DIR = ROOT / "staged" / "parquet"

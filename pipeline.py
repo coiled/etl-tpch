@@ -3,19 +3,18 @@ from datetime import timedelta
 from prefect import serve
 
 from pipeline.monitor import check_model_endpoint
-from pipeline.preprocess import json_to_parquet
+from pipeline.preprocess import compact_tables, json_to_parquet
 from pipeline.reduce import query_reduce
-from pipeline.resize import resize_parquet
 from pipeline.train import update_model
 
 if __name__ == "__main__":
     preprocess = json_to_parquet.to_deployment(
         name="preprocess",
-        interval=timedelta(seconds=30),
+        interval=timedelta(seconds=60),
     )
-    resize = resize_parquet.to_deployment(
-        name="resize",
-        interval=timedelta(seconds=30),
+    compact = compact_tables.to_deployment(
+        name="compact",
+        interval=timedelta(minutes=5),
     )
     reduce = query_reduce.to_deployment(
         name="reduce",
@@ -32,7 +31,7 @@ if __name__ == "__main__":
 
     serve(
         preprocess,
-        resize,
+        compact,
         reduce,
         train,
         monitor,

@@ -1,7 +1,10 @@
 import coiled
+import dask
+import deltalake
 import pandas as pd
-from filelock import FileLock
+import pyarrow as pa
 from prefect import flow, task
+from prefect.tasks import exponential_backoff
 
 from .settings import (
     LOCAL,
@@ -10,44 +13,81 @@ from .settings import (
     STAGING_JSON_DIR,
     STAGING_PARQUET_DIR,
     fs,
+    storage_options,
 )
 
-# TODO: Couldn't figure out how to limit concurrent flow runs
-# in Prefect, so am using a file lock...
-lock = FileLock("preprocess.lock")
+dask.config.set({"coiled.use_aws_creds_endpoint": False})
 
 
-@task(log_prints=True)
+@task(
+    log_prints=True,
+    retries=10,
+    retry_delay_seconds=exponential_backoff(10),
+    retry_jitter_factor=1,
+)
 @coiled.function(
     local=LOCAL,
     region=REGION,
+    keepalive="10 minutes",
     tags={"workflow": "etl-tpch"},
 )
-def convert_to_parquet(file):
+def json_file_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")
-    df = pd.read_json(file, lines=True, engine="pyarrow")
-    outfile = STAGING_PARQUET_DIR / file.relative_to(STAGING_JSON_DIR).with_suffix(
-        ".snappy.parquet"
-    )
+    df = pd.read_json(file, lines=True)
+    outfile = STAGING_PARQUET_DIR / file.parent.name
     fs.makedirs(outfile.parent, exist_ok=True)
-    df.to_parquet(outfile, compression="snappy")
+    data = pa.Table.from_pandas(df, preserve_index=False)
+    deltalake.write_deltalake(
+        outfile, data, mode="append", storage_options=storage_options
+    )
     print(f"Saved {outfile}")
-    return outfile
+    return file
 
 
 @task
 def archive_json_file(file):
     outfile = RAW_JSON_DIR / file.relative_to(STAGING_JSON_DIR)
     fs.makedirs(outfile.parent, exist_ok=True)
-    # Need str(...), otherwise, `TypeError: 'S3Path' object is not iterable`
     fs.mv(str(file), str(outfile))
     print(f"Archived {str(outfile)}")
+
+    return outfile
+
+
+def list_new_json_files():
+    return list(STAGING_JSON_DIR.rglob("*.json"))
 
 
 @flow(log_prints=True)
 def json_to_parquet():
-    with lock:
-        files = list(STAGING_JSON_DIR.rglob("*.json"))
-        parquet_files = convert_to_parquet.map(files)
-        archive_json_file.map(files, wait_for=parquet_files)
+    files = list_new_json_files()
+    files = json_file_to_parquet.map(files)
+    archive_json_file.map(files)
+
+
+@task(log_prints=True)
+@coiled.function(
+    local=LOCAL,
+    region=REGION,
+    keepalive="10 minutes",
+    tags={"workflow": "etl-tpch"},
+)
+def compact(table):
+    print(f"Compacting table {table}")
+    table = table if LOCAL else f"s3://{table}"
+    t = deltalake.DeltaTable(table, storage_options=storage_options)
+    t.optimize.compact()
+    t.vacuum(retention_hours=0, enforce_retention_duration=False, dry_run=False)
+
+
+@task
+def list_tables():
+    directories = fs.ls(STAGING_PARQUET_DIR)
+    return directories
+
+
+@flow(log_prints=True)
+def compact_tables():
+    tables = list_tables()
+    compact.map(tables)
