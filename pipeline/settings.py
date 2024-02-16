@@ -12,8 +12,9 @@ if LOCAL:
     storage_options = {}
 else:
     # TODO: Make the cloud path nicer (e.g. s3://coiled-datasets-rp)
-    ROOT = Path("s3://oss-scratch-space/jrbourbeau/etl-tpch/data")
-    fs = fsspec.filesystem("s3")
+    ROOT = Path("s3://openscapes-scratch/jrbourbeau/etl-tpch/data-test")
+    # ROOT = Path("s3://oss-scratch-space/jrbourbeau/etl-tpch/data-test")
+    fs = fsspec.filesystem("s3", use_listings_cache=False)
     # Find cloud region being used
     bucket = str(ROOT).replace("s3://", "").split("/")[0]
     resp = boto3.client("s3").get_bucket_location(Bucket=bucket)

@@ -14,8 +14,8 @@ from .settings import LOCAL, MODEL_FILE, REDUCED_DATA_DIR, REGION, Path, fs
     region=REGION,
     tags={"workflow": "etl-tpch"},
 )
-def train():
-    df = pd.read_parquet(REDUCED_DATA_DIR / "europe" / "brass")
+def train(files):
+    df = pd.read_parquet(files)
     X = df[["p_partkey", "s_acctbal"]]
     y = df["n_name"].map(
         {"FRANCE": 0, "UNITED KINGDOM": 1, "RUSSIA": 2, "GERMANY": 3, "ROMANIA": 4}
@@ -34,7 +34,16 @@ def train():
     return model
 
 
+def list_training_data_files():
+    data_dir = REDUCED_DATA_DIR / "europe" / "brass"
+    return list(data_dir.rglob("*.parquet"))
+
+
 @flow(log_prints=True)
 def update_model():
-    train()
+    files = list_training_data_files()
+    if not files:
+        print("No training data available")
+        return
+    train(files)
     print(f"Updated model at {MODEL_FILE}")

@@ -8,7 +8,14 @@ import dask_deltatable
 from dask.distributed import LocalCluster
 from prefect import flow, task
 
-from .settings import LOCAL, REDUCED_DATA_DIR, REGION, STAGING_PARQUET_DIR, fs
+from .settings import (
+    LOCAL,
+    REDUCED_DATA_DIR,
+    REGION,
+    STAGING_PARQUET_DIR,
+    fs,
+    storage_options,
+)
 
 dask.config.set({"coiled.use_aws_creds_endpoint": False})
 
@@ -20,22 +27,37 @@ def save_query(region, part_type):
         cluster = LocalCluster
     else:
         cluster = functools.partial(
-            coiled.Cluster, region=REGION, tags={"workflow": "etl-tpch"}
+            coiled.Cluster,
+            name="reduce",
+            region=REGION,
+            n_workers=20,
+            tags={"workflow": "etl-tpch"},
+            shutdown_on_close=False,
+            idle_timeout="3 minutes",
+            wait_for_workers=True,
         )
 
     with cluster() as cluster:
         with cluster.get_client():
             size = 15
-            region_ds = dask_deltatable.read_deltalake(STAGING_PARQUET_DIR / "region")
+            region_ds = dask_deltatable.read_deltalake(
+                str(STAGING_PARQUET_DIR / "region"),
+                delta_storage_options=storage_options,
+            )
             nation_filtered = dask_deltatable.read_deltalake(
-                STAGING_PARQUET_DIR / "nation"
+                str(STAGING_PARQUET_DIR / "nation"),
+                delta_storage_options=storage_options,
             )
             supplier_filtered = dask_deltatable.read_deltalake(
-                STAGING_PARQUET_DIR / "supplier"
+                str(STAGING_PARQUET_DIR / "supplier"),
+                delta_storage_options=storage_options,
             )
-            part_filtered = dask_deltatable.read_deltalake(STAGING_PARQUET_DIR / "part")
+            part_filtered = dask_deltatable.read_deltalake(
+                str(STAGING_PARQUET_DIR / "part"), delta_storage_options=storage_options
+            )
             partsupp_filtered = dask_deltatable.read_deltalake(
-                STAGING_PARQUET_DIR / "partsupp"
+                str(STAGING_PARQUET_DIR / "partsupp"),
+                delta_storage_options=storage_options,
             )
 
             region_filtered = region_ds[(region_ds["r_name"] == region.upper())]
@@ -91,16 +113,16 @@ def save_query(region, part_type):
                 .sort_values(
                     by=[
                         "s_acctbal",
-                        # "n_name",
-                        # "s_name",
-                        # "p_partkey",
+                        "n_name",
+                        "s_name",
+                        "p_partkey",
                     ],
-                    # ascending=[
-                    #     False,
-                    #     True,
-                    #     True,
-                    #     True,
-                    # ],
+                    ascending=[
+                        False,
+                        True,
+                        True,
+                        True,
+                    ],
                 )
                 .head(100, compute=False)
             )

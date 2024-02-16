@@ -1,4 +1,4 @@
-from datetime import timedelta
+# from datetime import timedelta
 
 from prefect import serve
 
@@ -11,27 +11,27 @@ from pipeline.train import update_model
 if __name__ == "__main__":
     data = generate_data.to_deployment(
         name="generate_data",
-        interval=timedelta(seconds=20),
+        # interval=timedelta(seconds=30),
     )
     preprocess = json_to_parquet.to_deployment(
         name="preprocess",
-        interval=timedelta(seconds=60),
+        # interval=timedelta(minutes=1),
     )
     compact = compact_tables.to_deployment(
         name="compact",
-        interval=timedelta(minutes=5),
+        # interval=timedelta(minutes=5),
     )
     reduce = query_reduce.to_deployment(
         name="reduce",
-        interval=timedelta(minutes=1),
+        # interval=timedelta(minutes=30),
     )
     train = update_model.to_deployment(
         name="train",
-        interval=timedelta(minutes=2),
+        # interval=timedelta(minutes=45),
     )
     monitor = check_model_endpoint.to_deployment(
         name="monitor",
-        interval=timedelta(seconds=10),
+        # interval=timedelta(seconds=30),
     )
 
     serve(
@@ -40,5 +40,5 @@ if __name__ == "__main__":
         compact,
         reduce,
         train,
-        monitor,
+        # monitor,
     )

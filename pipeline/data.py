@@ -5,6 +5,7 @@ import botocore.session
 import coiled
 import duckdb
 import psutil
+import pyarrow.compute as pc
 from prefect import flow, task
 
 from pipeline.settings import LOCAL, REGION, STAGING_JSON_DIR, fs
@@ -12,8 +13,10 @@ from pipeline.settings import LOCAL, REGION, STAGING_JSON_DIR, fs
 
 @task(log_prints=True)
 @coiled.function(
+    name="data-generation",
     local=LOCAL,
     region=REGION,
+    keepalive="5 minutes",
     tags={"workflow": "etl-tpch"},
 )
 def generate(scale: float, path: os.PathLike) -> None:
@@ -49,6 +52,10 @@ def generate(scale: float, path: os.PathLike) -> None:
         con.sql(query)
         print("Finished generating data, exporting...")
 
+        print("Converting types date -> timestamp_s and decimal -> double")
+        _alter_tables(con)
+        print("Done altering tables")
+
         tables = (
             con.sql("select * from information_schema.tables")
             .arrow()
@@ -75,9 +82,41 @@ def generate(scale: float, path: os.PathLike) -> None:
         print("Finished exporting all data")
 
 
+def _alter_tables(con):
+    """
+    Temporary, used for debugging performance in data types.
+
+    ref discussion here: https://github.com/coiled/benchmarks/pull/1131
+    """
+    tables = [
+        "nation",
+        "region",
+        "customer",
+        "supplier",
+        "lineitem",
+        "orders",
+        "partsupp",
+        "part",
+    ]
+    for table in tables:
+        schema = con.sql(f"describe {table}").arrow()
+
+        # alter decimals to floats
+        for column in schema.filter(
+            pc.match_like(pc.field("column_type"), "DECIMAL%")
+        ).column("column_name"):
+            con.sql(f"alter table {table} alter {column} type double")
+
+        # alter date to timestamp_s
+        for column in schema.filter(pc.field("column_type") == "DATE").column(
+            "column_name"
+        ):
+            con.sql(f"alter table {table} alter {column} type timestamp_s")
+
+
 @flow
 def generate_data():
     generate(
-        scale=0.01,
+        scale=0.02,
         path=STAGING_JSON_DIR,
     )
