@@ -1,5 +1,6 @@
 import boto3
 import fsspec
+from filelock import FileLock
 from upath import UPath as Path
 
 LOCAL = True
@@ -12,8 +13,7 @@ if LOCAL:
     storage_options = {}
 else:
     # TODO: Make the cloud path nicer (e.g. s3://coiled-datasets-rp)
-    ROOT = Path("s3://openscapes-scratch/jrbourbeau/etl-tpch/data-test")
-    # ROOT = Path("s3://oss-scratch-space/jrbourbeau/etl-tpch/data-test")
+    ROOT = Path("s3://openscapes-scratch/jrbourbeau/etl-tpch/data")
     fs = fsspec.filesystem("s3", use_listings_cache=False)
     # Find cloud region being used
     bucket = str(ROOT).replace("s3://", "").split("/")[0]
@@ -29,3 +29,6 @@ PROCESSED_DATA_DIR = ROOT / "processed"
 REDUCED_DATA_DIR = ROOT / "reduced"
 MODEL_FILE = ROOT.parent / "model.json"
 MODEL_SERVER_FILE = ROOT.parent / "serve_model.py"
+
+lock_json_to_parquet = FileLock("json_to_parquet.lock")
+lock_compact = FileLock("compact.lock")

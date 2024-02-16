@@ -5,21 +5,22 @@ import botocore.session
 import coiled
 import duckdb
 import psutil
-import pyarrow.compute as pc
+from dask.distributed import print
 from prefect import flow, task
 
-from pipeline.settings import LOCAL, REGION, STAGING_JSON_DIR, fs
+from .settings import LOCAL, REGION, STAGING_JSON_DIR, STAGING_PARQUET_DIR, fs
 
 
 @task(log_prints=True)
 @coiled.function(
-    name="data-generation",
+    name="data-etl",
     local=LOCAL,
     region=REGION,
     keepalive="5 minutes",
     tags={"workflow": "etl-tpch"},
 )
 def generate(scale: float, path: os.PathLike) -> None:
+    static_tables = ["customer", "nation", "part", "partsupp", "region", "supplier"]
     with duckdb.connect() as con:
         con.install_extension("tpch")
         con.load_extension("tpch")
@@ -52,16 +53,18 @@ def generate(scale: float, path: os.PathLike) -> None:
         con.sql(query)
         print("Finished generating data, exporting...")
 
-        print("Converting types date -> timestamp_s and decimal -> double")
-        _alter_tables(con)
-        print("Done altering tables")
-
         tables = (
             con.sql("select * from information_schema.tables")
             .arrow()
             .column("table_name")
         )
         for table in map(str, tables):
+            if table in static_tables and (
+                list((STAGING_JSON_DIR / table).rglob("*.json"))
+                or list((STAGING_PARQUET_DIR / table).rglob("*.parquet"))
+            ):
+                print(f"Static table {table} already exists")
+                continue
             print(f"Exporting table: {table}")
             stmt = f"""select * from {table}"""
             df = con.sql(stmt).arrow()
@@ -82,41 +85,9 @@ def generate(scale: float, path: os.PathLike) -> None:
         print("Finished exporting all data")
 
 
-def _alter_tables(con):
-    """
-    Temporary, used for debugging performance in data types.
-
-    ref discussion here: https://github.com/coiled/benchmarks/pull/1131
-    """
-    tables = [
-        "nation",
-        "region",
-        "customer",
-        "supplier",
-        "lineitem",
-        "orders",
-        "partsupp",
-        "part",
-    ]
-    for table in tables:
-        schema = con.sql(f"describe {table}").arrow()
-
-        # alter decimals to floats
-        for column in schema.filter(
-            pc.match_like(pc.field("column_type"), "DECIMAL%")
-        ).column("column_name"):
-            con.sql(f"alter table {table} alter {column} type double")
-
-        # alter date to timestamp_s
-        for column in schema.filter(pc.field("column_type") == "DATE").column(
-            "column_name"
-        ):
-            con.sql(f"alter table {table} alter {column} type timestamp_s")
-
-
 @flow
 def generate_data():
     generate(
-        scale=0.02,
+        scale=0.01,
         path=STAGING_JSON_DIR,
     )

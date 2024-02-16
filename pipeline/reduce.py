@@ -1,9 +1,7 @@
 import functools
 import itertools
-import uuid
 
 import coiled
-import dask
 import dask_deltatable
 from dask.distributed import LocalCluster
 from prefect import flow, task
@@ -14,10 +12,9 @@ from .settings import (
     REGION,
     STAGING_PARQUET_DIR,
     fs,
+    lock_compact,
     storage_options,
 )
-
-dask.config.set({"coiled.use_aws_creds_endpoint": False})
 
 
 @task
@@ -33,7 +30,7 @@ def save_query(region, part_type):
             n_workers=20,
             tags={"workflow": "etl-tpch"},
             shutdown_on_close=False,
-            idle_timeout="3 minutes",
+            idle_timeout="5 minutes",
             wait_for_workers=True,
         )
 
@@ -124,21 +121,18 @@ def save_query(region, part_type):
                         True,
                     ],
                 )
-                .head(100, compute=False)
+                .head(100)
             )
 
-            outdir = REDUCED_DATA_DIR / region / part_type
-            fs.makedirs(outdir, exist_ok=True)
-
-            def name(_):
-                return f"{uuid.uuid4()}.snappy.parquet"
-
-            result.to_parquet(outdir, compression="snappy", name_function=name)
+            outfile = REDUCED_DATA_DIR / region / part_type / "result.snappy.parquet"
+            fs.makedirs(outfile.parent, exist_ok=True)
+            result.to_parquet(outfile, compression="snappy")
 
 
 @flow
 def query_reduce():
-    regions = ["europe", "africa", "america", "asia", "middle east"]
-    part_types = ["copper", "brass", "tin", "nickel", "steel"]
-    for region, part_type in itertools.product(regions, part_types):
-        save_query(region, part_type)
+    with lock_compact:
+        regions = ["europe", "africa", "america", "asia", "middle east"]
+        part_types = ["copper", "brass", "tin", "nickel", "steel"]
+        for region, part_type in itertools.product(regions, part_types):
+            save_query(region, part_type)
