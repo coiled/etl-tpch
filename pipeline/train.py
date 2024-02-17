@@ -31,7 +31,8 @@ def train(file):
     with tempfile.TemporaryDirectory() as tmpdir:
         out = Path(tmpdir) / "model.json"
         model.save_model(out)
-        fs.mv(str(out), str(MODEL_FILE.parent))
+        fs.makedirs(MODEL_FILE.parent, exist_ok=True)
+        fs.put(out, MODEL_FILE)
     return model
 
 

@@ -27,7 +27,7 @@ def save_query(region, part_type):
             coiled.Cluster,
             name="reduce",
             region=REGION,
-            n_workers=20,
+            n_workers=10,
             tags={"workflow": "etl-tpch"},
             shutdown_on_close=False,
             idle_timeout="5 minutes",
