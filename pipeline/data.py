@@ -8,12 +8,19 @@ import psutil
 from dask.distributed import print
 from prefect import flow, task
 
-from .settings import LOCAL, REGION, STAGING_JSON_DIR, STAGING_PARQUET_DIR, fs
+from .settings import (
+    LOCAL,
+    REGION,
+    STAGING_JSON_DIR,
+    STAGING_PARQUET_DIR,
+    fs,
+    lock_generate,
+)
 
 
 @task(log_prints=True)
 @coiled.function(
-    name="data-etl",
+    name="data-generation",
     local=LOCAL,
     region=REGION,
     keepalive="5 minutes",
@@ -87,7 +94,9 @@ def generate(scale: float, path: os.PathLike) -> None:
 
 @flow
 def generate_data():
-    generate(
-        scale=0.01,
-        path=STAGING_JSON_DIR,
-    )
+    with lock_generate:
+        generate(
+            scale=0.01,
+            path=STAGING_JSON_DIR,
+        )
+        generate.fn.client.restart()

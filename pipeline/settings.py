@@ -30,5 +30,6 @@ REDUCED_DATA_DIR = ROOT / "reduced"
 MODEL_FILE = ROOT.parent / "model.json"
 MODEL_SERVER_FILE = ROOT.parent / "serve_model.py"
 
+lock_generate = FileLock("generate.lock")
 lock_json_to_parquet = FileLock("json_to_parquet.lock")
 lock_compact = FileLock("compact.lock")
