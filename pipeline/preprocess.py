@@ -1,8 +1,8 @@
 import coiled
-import dask
 import deltalake
 import pandas as pd
 import pyarrow as pa
+from dask.distributed import print
 from prefect import flow, task
 from prefect.tasks import exponential_backoff
 
@@ -13,10 +13,10 @@ from .settings import (
     STAGING_JSON_DIR,
     STAGING_PARQUET_DIR,
     fs,
+    lock_compact,
+    lock_json_to_parquet,
     storage_options,
 )
-
-dask.config.set({"coiled.use_aws_creds_endpoint": False})
 
 
 @task(
@@ -26,9 +26,10 @@ dask.config.set({"coiled.use_aws_creds_endpoint": False})
     retry_jitter_factor=1,
 )
 @coiled.function(
+    name="data-etl",
     local=LOCAL,
     region=REGION,
-    keepalive="10 minutes",
+    keepalive="5 minutes",
     tags={"workflow": "etl-tpch"},
 )
 def json_file_to_parquet(file):
@@ -50,7 +51,6 @@ def archive_json_file(file):
     outfile = RAW_JSON_DIR / file.relative_to(STAGING_JSON_DIR)
     fs.makedirs(outfile.parent, exist_ok=True)
     fs.mv(str(file), str(outfile))
-    print(f"Archived {str(outfile)}")
 
     return outfile
 
@@ -61,16 +61,20 @@ def list_new_json_files():
 
 @flow(log_prints=True)
 def json_to_parquet():
-    files = list_new_json_files()
-    files = json_file_to_parquet.map(files)
-    archive_json_file.map(files)
+    with lock_json_to_parquet:
+        files = list_new_json_files()
+        files = json_file_to_parquet.map(files)
+        futures = archive_json_file.map(files)
+        for f in futures:
+            print(f"Archived {str(f.result())}")
 
 
 @task(log_prints=True)
 @coiled.function(
+    name="data-etl",
     local=LOCAL,
     region=REGION,
-    keepalive="10 minutes",
+    keepalive="5 minutes",
     tags={"workflow": "etl-tpch"},
 )
 def compact(table):
@@ -79,15 +83,21 @@ def compact(table):
     t = deltalake.DeltaTable(table, storage_options=storage_options)
     t.optimize.compact()
     t.vacuum(retention_hours=0, enforce_retention_duration=False, dry_run=False)
+    return table
 
 
 @task
 def list_tables():
-    directories = fs.ls(STAGING_PARQUET_DIR)
+    if not fs.exists(STAGING_PARQUET_DIR):
+        return []
+    directories = fs.ls(STAGING_PARQUET_DIR, refresh=True)
     return directories
 
 
 @flow(log_prints=True)
 def compact_tables():
-    tables = list_tables()
-    compact.map(tables)
+    with lock_compact:
+        tables = list_tables()
+        futures = compact.map(tables)
+        for f in futures:
+            print(f"Finished compacting {f.result()} table")

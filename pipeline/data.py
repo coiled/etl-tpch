@@ -5,18 +5,29 @@ import botocore.session
 import coiled
 import duckdb
 import psutil
+from dask.distributed import print
 from prefect import flow, task
 
-from pipeline.settings import LOCAL, REGION, STAGING_JSON_DIR, fs
+from .settings import (
+    LOCAL,
+    REGION,
+    STAGING_JSON_DIR,
+    STAGING_PARQUET_DIR,
+    fs,
+    lock_generate,
+)
 
 
 @task(log_prints=True)
 @coiled.function(
+    name="data-generation",
     local=LOCAL,
     region=REGION,
+    keepalive="5 minutes",
     tags={"workflow": "etl-tpch"},
 )
 def generate(scale: float, path: os.PathLike) -> None:
+    static_tables = ["customer", "nation", "part", "partsupp", "region", "supplier"]
     with duckdb.connect() as con:
         con.install_extension("tpch")
         con.load_extension("tpch")
@@ -55,6 +66,12 @@ def generate(scale: float, path: os.PathLike) -> None:
             .column("table_name")
         )
         for table in map(str, tables):
+            if table in static_tables and (
+                list((STAGING_JSON_DIR / table).rglob("*.json"))
+                or list((STAGING_PARQUET_DIR / table).rglob("*.parquet"))
+            ):
+                print(f"Static table {table} already exists")
+                continue
             print(f"Exporting table: {table}")
             stmt = f"""select * from {table}"""
             df = con.sql(stmt).arrow()
@@ -77,7 +94,9 @@ def generate(scale: float, path: os.PathLike) -> None:
 
 @flow
 def generate_data():
-    generate(
-        scale=0.01,
-        path=STAGING_JSON_DIR,
-    )
+    with lock_generate:
+        generate(
+            scale=0.01,
+            path=STAGING_JSON_DIR,
+        )
+        generate.fn.client.restart()

@@ -15,5 +15,7 @@ dependencies:
   - filelock
   - streamlit
   - s3fs
-  - universal_pathlib
+  - universal_pathlib <0.2.0
   - boto3
+  # - awscli
+  - dask-deltatable

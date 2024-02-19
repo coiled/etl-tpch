@@ -14,7 +14,7 @@ Then run each command below in separate terminal windows:
 python serve_model.py       # Serve ML model
 ```
 ```bash
-python pipeline.py          # Run ETL pipeline
+python workflow.py          # Run ETL pipeline
 ```
 ```bash
 streamlit run dashboard.py  # Serve dashboard
