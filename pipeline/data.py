@@ -1,21 +1,13 @@
 import datetime
 import os
 
-import botocore.session
 import coiled
 import duckdb
 import psutil
 from dask.distributed import print
 from prefect import flow, task
 
-from .settings import (
-    LOCAL,
-    REGION,
-    STAGING_JSON_DIR,
-    STAGING_PARQUET_DIR,
-    fs,
-    lock_generate,
-)
+from .settings import LOCAL, PROCESSED_DIR, REGION, STAGING_DIR, fs, lock_generate
 
 
 @task(log_prints=True)
@@ -31,21 +23,6 @@ def generate(scale: float, path: os.PathLike) -> None:
     with duckdb.connect() as con:
         con.install_extension("tpch")
         con.load_extension("tpch")
-
-        if str(path).startswith("s3://"):
-            session = botocore.session.Session()
-            creds = session.get_credentials()
-            con.install_extension("httpfs")
-            con.load_extension("httpfs")
-            con.sql(
-                f"""
-                SET s3_region='{REGION}';
-                SET s3_access_key_id='{creds.access_key}';
-                SET s3_secret_access_key='{creds.secret_key}';
-                SET s3_session_token='{creds.token}';
-                """
-            )
-
         con.sql(
             f"""
             SET memory_limit='{psutil.virtual_memory().available // 2**30 }G';
@@ -67,8 +44,8 @@ def generate(scale: float, path: os.PathLike) -> None:
         )
         for table in map(str, tables):
             if table in static_tables and (
-                list((STAGING_JSON_DIR / table).rglob("*.json"))
-                or list((STAGING_PARQUET_DIR / table).rglob("*.parquet"))
+                list((STAGING_DIR / table).rglob("*.json"))
+                or list((PROCESSED_DIR / table).rglob("*.parquet"))
             ):
                 print(f"Static table {table} already exists")
                 continue
@@ -97,6 +74,6 @@ def generate_data():
     with lock_generate:
         generate(
             scale=0.01,
-            path=STAGING_JSON_DIR,
+            path=STAGING_DIR,
         )
-        generate.fn.client.restart()
+        generate.fn.client.restart(wait_for_workers=False)

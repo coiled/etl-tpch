@@ -5,7 +5,7 @@ import pandas as pd
 import xgboost as xgb
 from prefect import flow, task
 
-from .settings import LOCAL, MODEL_FILE, REDUCED_DATA_DIR, REGION, Path, fs
+from .settings import LOCAL, MODEL_FILE, REGION, RESULTS_DIR, Path, fs
 
 
 @task
@@ -37,7 +37,7 @@ def train(file):
 
 
 def list_training_data_files():
-    data_dir = REDUCED_DATA_DIR / "europe" / "brass"
+    data_dir = RESULTS_DIR / "europe" / "brass"
     return list(data_dir.rglob("*.parquet"))
 
 

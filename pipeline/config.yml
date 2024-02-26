@@ -1,0 +1,6 @@
+# Whether to run data-processing tasks locally
+# or on the cloud with Coiled.
+local: true
+# Output location for data files. Can be a local directory
+# or a remote path like "s3://path/to/bucket".
+data-dir: ./data
