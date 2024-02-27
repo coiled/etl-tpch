@@ -8,9 +8,9 @@ from prefect import flow, task
 
 from .settings import (
     LOCAL,
-    REDUCED_DATA_DIR,
+    PROCESSED_DIR,
     REGION,
-    STAGING_PARQUET_DIR,
+    RESULTS_DIR,
     fs,
     lock_compact,
     storage_options,
@@ -38,22 +38,22 @@ def save_query(region, part_type):
         with cluster.get_client():
             size = 15
             region_ds = dask_deltatable.read_deltalake(
-                str(STAGING_PARQUET_DIR / "region"),
+                str(PROCESSED_DIR / "region"),
                 delta_storage_options=storage_options,
             )
             nation_filtered = dask_deltatable.read_deltalake(
-                str(STAGING_PARQUET_DIR / "nation"),
+                str(PROCESSED_DIR / "nation"),
                 delta_storage_options=storage_options,
             )
             supplier_filtered = dask_deltatable.read_deltalake(
-                str(STAGING_PARQUET_DIR / "supplier"),
+                str(PROCESSED_DIR / "supplier"),
                 delta_storage_options=storage_options,
             )
             part_filtered = dask_deltatable.read_deltalake(
-                str(STAGING_PARQUET_DIR / "part"), delta_storage_options=storage_options
+                str(PROCESSED_DIR / "part"), delta_storage_options=storage_options
             )
             partsupp_filtered = dask_deltatable.read_deltalake(
-                str(STAGING_PARQUET_DIR / "partsupp"),
+                str(PROCESSED_DIR / "partsupp"),
                 delta_storage_options=storage_options,
             )
 
@@ -124,7 +124,7 @@ def save_query(region, part_type):
                 .head(100)
             )
 
-            outfile = REDUCED_DATA_DIR / region / part_type / "result.snappy.parquet"
+            outfile = RESULTS_DIR / region / part_type / "result.snappy.parquet"
             fs.makedirs(outfile.parent, exist_ok=True)
             result.to_parquet(outfile, compression="snappy")
 

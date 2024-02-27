@@ -7,11 +7,11 @@ from prefect import flow, task
 from prefect.tasks import exponential_backoff
 
 from .settings import (
+    ARCHIVE_DIR,
     LOCAL,
-    RAW_JSON_DIR,
+    PROCESSED_DIR,
     REGION,
-    STAGING_JSON_DIR,
-    STAGING_PARQUET_DIR,
+    STAGING_DIR,
     fs,
     lock_compact,
     lock_json_to_parquet,
@@ -36,7 +36,7 @@ def json_file_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")
     df = pd.read_json(file, lines=True)
-    outfile = STAGING_PARQUET_DIR / file.parent.name
+    outfile = PROCESSED_DIR / file.parent.name
     fs.makedirs(outfile.parent, exist_ok=True)
     data = pa.Table.from_pandas(df, preserve_index=False)
     deltalake.write_deltalake(
@@ -48,7 +48,7 @@ def json_file_to_parquet(file):
 
 @task
 def archive_json_file(file):
-    outfile = RAW_JSON_DIR / file.relative_to(STAGING_JSON_DIR)
+    outfile = ARCHIVE_DIR / file.relative_to(STAGING_DIR)
     fs.makedirs(outfile.parent, exist_ok=True)
     fs.mv(str(file), str(outfile))
 
@@ -56,7 +56,7 @@ def archive_json_file(file):
 
 
 def list_new_json_files():
-    return list(STAGING_JSON_DIR.rglob("*.json"))
+    return list(STAGING_DIR.rglob("*.json"))
 
 
 @flow(log_prints=True)
@@ -88,9 +88,9 @@ def compact(table):
 
 @task
 def list_tables():
-    if not fs.exists(STAGING_PARQUET_DIR):
+    if not fs.exists(PROCESSED_DIR):
         return []
-    directories = fs.ls(STAGING_PARQUET_DIR, refresh=True)
+    directories = fs.ls(PROCESSED_DIR, refresh=True)
     return directories
 
 
