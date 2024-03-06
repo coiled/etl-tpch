@@ -15,7 +15,7 @@ from .settings import LOCAL, PROCESSED_DIR, REGION, STAGING_DIR, fs, lock_genera
     name="data-generation",
     local=LOCAL,
     region=REGION,
-    keepalive="5 minutes",
+    vm_type="m6i.2xlarge",
     tags={"workflow": "etl-tpch"},
 )
 def generate(scale: float, path: os.PathLike) -> None:
@@ -51,7 +51,12 @@ def generate(scale: float, path: os.PathLike) -> None:
                 continue
             print(f"Exporting table: {table}")
             stmt = f"""select * from {table}"""
-            df = con.sql(stmt).arrow()
+            df = con.sql(stmt).df()
+            # TODO: Increment the order key in the `lineitem` and `orders`
+            # tables each time the flow is run to produce unique transactions
+            # xref https://discourse.prefect.io/t/how-to-get-flow-count/3996
+            # if table in ["lineitem", "orders"]:
+            #     df[f"{table[0]}_orderkey"] += counter
 
             outfile = (
                 path
@@ -59,7 +64,7 @@ def generate(scale: float, path: os.PathLike) -> None:
                 / f"{table}_{datetime.datetime.now().isoformat().split('.')[0]}.json"
             )
             fs.makedirs(outfile.parent, exist_ok=True)
-            df.to_pandas().to_json(
+            df.to_json(
                 outfile,
                 date_format="iso",
                 orient="records",
@@ -73,7 +78,6 @@ def generate(scale: float, path: os.PathLike) -> None:
 def generate_data():
     with lock_generate:
         generate(
-            scale=0.01,
+            scale=1,
             path=STAGING_DIR,
         )
-        generate.fn.client.restart(wait_for_workers=False)

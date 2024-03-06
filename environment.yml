@@ -17,4 +17,7 @@ dependencies:
   - s3fs
   - universal_pathlib <0.2.0
   - boto3
-  - dask-deltatable
+  # - dask-deltatable
+  - pip
+  - pip:
+    - git+https://github.com/fjetter/dask-deltatable.git@dask_expr
