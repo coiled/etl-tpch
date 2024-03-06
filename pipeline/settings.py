@@ -31,8 +31,7 @@ STAGING_DIR = ROOT / "staging"  # Input JSON files
 PROCESSED_DIR = ROOT / "processed"  # Processed Parquet files
 RESULTS_DIR = ROOT / "results"  # Reduced/aggrgated results
 ARCHIVE_DIR = ROOT / "archive"  # Archived JSON files
-MODEL_FILE = ROOT.parent / "model.json"
-MODEL_SERVER_FILE = ROOT.parent / "serve_model.py"
+DASHBOARD_FILE = ROOT.parent / "dashboard.py"
 
 lock_dir = Path(__file__).parent.parent / ".locks"
 lock_generate = FileLock(lock_dir / "generate.lock")

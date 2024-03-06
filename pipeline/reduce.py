@@ -18,7 +18,7 @@ from .settings import (
 
 
 @task
-def save_query(segment):
+def unshipped_orders_by_revenue(segment):
 
     if LOCAL:
         cluster = LocalCluster
@@ -81,4 +81,4 @@ def query_reduce():
     with lock_compact:
         segments = ["automobile", "building", "furniture", "machinery", "household"]
         for segment in segments:
-            save_query(segment)
+            unshipped_orders_by_revenue(segment)
