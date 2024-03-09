@@ -35,9 +35,6 @@ def json_file_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
     print(f"Processing {file}")
     df = pd.read_json(file, lines=True)
-    cols = [c for c in df.columns if "date" in c]
-    for col in cols:
-        df[col] = pd.to_datetime(df[col])
     outfile = PROCESSED_DIR / file.parent.name
     fs.makedirs(outfile.parent, exist_ok=True)
     data = pa.Table.from_pandas(df, preserve_index=False)

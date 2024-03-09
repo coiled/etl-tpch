@@ -1,4 +1,3 @@
-import datetime
 import time
 
 import pandas as pd
@@ -46,13 +45,10 @@ if segment:
     df = df.drop(columns="o_shippriority")
     df["l_orderkey"] = df["l_orderkey"].map(lambda x: f"{x:09}")
     df["revenue"] = df["revenue"].round(2)
-    now = datetime.datetime.now()
-    dt = now.date() - datetime.date(1995, 3, 15)
-    df["o_orderdate"] = (df["o_orderdate"] + dt).dt.date
     df = df.rename(
         columns={
             "l_orderkey": "Order ID",
-            "o_orderdate": "Date Ordered",
+            "o_order_time": "Date Ordered",
             "revenue": "Revenue",
         }
     )

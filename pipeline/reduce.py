@@ -1,8 +1,9 @@
 import functools
-from datetime import datetime
 
 import coiled
+import dask
 import dask_deltatable as ddt
+import pandas as pd
 from dask.distributed import LocalCluster
 from prefect import flow, task
 
@@ -15,6 +16,8 @@ from .settings import (
     lock_compact,
     storage_options,
 )
+
+dask.config.set({"dataframe.query-planning": True})
 
 
 @task
@@ -36,9 +39,6 @@ def unshipped_orders_by_revenue(segment):
 
     with cluster() as cluster:
         with cluster.get_client():
-            date = datetime.strptime("1995-03-15", "%Y-%m-%d")
-            segment = segment
-
             lineitem_ds = ddt.read_deltalake(
                 str(PROCESSED_DIR / "lineitem"),
                 delta_storage_options=storage_options,
@@ -52,8 +52,9 @@ def unshipped_orders_by_revenue(segment):
                 delta_storage_options=storage_options,
             )
 
-            lsel = lineitem_ds.l_shipdate > date
-            osel = orders_ds.o_orderdate < date
+            date = pd.Timestamp.now()
+            lsel = lineitem_ds.l_ship_time > date
+            osel = orders_ds.o_order_time < date
             csel = customer_ds.c_mktsegment == segment.upper()
             flineitem = lineitem_ds[lsel]
             forders = orders_ds[osel]
@@ -61,14 +62,14 @@ def unshipped_orders_by_revenue(segment):
             jn1 = fcustomer.merge(forders, left_on="c_custkey", right_on="o_custkey")
             jn2 = jn1.merge(flineitem, left_on="o_orderkey", right_on="l_orderkey")
             jn2["revenue"] = jn2.l_extendedprice * (1 - jn2.l_discount)
-            total = jn2.groupby(["l_orderkey", "o_orderdate", "o_shippriority"])[
+            total = jn2.groupby(["l_orderkey", "o_order_time", "o_shippriority"])[
                 "revenue"
             ].sum()
             result = (
                 total.reset_index()
                 .sort_values(["revenue"], ascending=False)
                 .head(50, compute=False)[
-                    ["l_orderkey", "revenue", "o_orderdate", "o_shippriority"]
+                    ["l_orderkey", "revenue", "o_order_time", "o_shippriority"]
                 ]
             ).compute()
             outfile = RESULTS_DIR / f"{segment}.snappy.parquet"
