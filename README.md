@@ -1,13 +1,9 @@
 Example Production ETL System - TPC-H
 =====================================
 
-This repository contains a scalable example production data pipeline running on the cloud that represents what we commonly see in the wild.
+This repository contains a scalable example production data pipeline running on the cloud that represents what we commonly see in real-world applications.
 
-While specific details vary across use cases, there are common pipeline steps and pain points. 
-
-There are many considerations involved in constructing a data processing pipeline. We hope this example pipeline helps provide a path for addressing common pain points and serves as a template for your own use case.
-
-The pipeline here is intended to show that running regular jobs on a schedule, at scale, on the cloud can be a delightful experience for Python developers. 
+While specific details vary, we see both common pipeline tasks and common pain points across many use cases. We hope the example here provides a path for addressing common pain points and can serve as a template for your own use case.
 
 
 ## Common data pipeline steps
