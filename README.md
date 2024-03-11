@@ -1,26 +1,81 @@
 Example Production ETL System - TPC-H
 =====================================
 
+This repository contains a scalable example production data pipeline running on the cloud that represents what we commonly see in the wild.
+
+While specific details vary across use cases, there are common pipeline steps and pain points. 
+
+There are many considerations involved in constructing a data processing pipeline. We hope this example pipeline helps provide a path for addressing common pain points and serves as a template for your own use case.
+
+The pipeline here is intended to show that running regular jobs on a schedule, at scale, on the cloud can be a delightful experience for Python developers. 
+
+
+## Common data pipeline steps
+
+While specific details vary across use cases, we often see these four steps:
+
+- Step 1: **Real world generates raw data**
+    - A customer makes a purchase
+    - A satellite takes a measurement
+    - ...
+- Step 2: **Process that raw data**
+    - A feature engineering step
+    - Make data quality cuts
+    - Convert to a different storage format
+    - ...
+- Step 3: **Address business needs using your data**
+    - Large scale query of your data -- "How many purchases were returned at our store in NYC?"
+    - Train an ML model for weather forecasting
+    - ...
+- Step 4: **Publish results**
+    - Serve an interactive dashboard with a real-time view of customer orders
+    - Host an ML model
+    - ...
+
+
+## Common data pipeline pain points
+
+While the outline above is straightforward, in practice there are _many_ things one may need to consider when constructing a data pipeline.
+
+Depending on your situation you may need to think about one or more of the following:
+
+- Managing cloud infrastructure:
+    - Provisioning / deprovisioning cloud machines
+    - Software environment management
+    - Cloud data access
+    - Easy access to logs
+    - Cost monitoring and spending limits
+    - ...
+- Pipeline orchestration:
+    - Run steps at different regular cadences (e.g. process raw data every 5 minutes and retrain ML model once a day)
+    - Task retry logic
+    - Alerts if a certain task fails
+    - ...
+- Computational needs:
+    - Easily run existing Python code on cloud machines
+    - Compute at scale on larger-than-memory datasets
+- ...
+
+
+## Example pipeline
+
+The data pipeline here represents just one specific workflow instance, but follows an overall common structure. We use the [TPC-H dataset](https://www.tpc.org/tpch/) 
+
+- Step 1: **Data generation** &mdash; New JSON files with customer orders and supplier information appear (every 15 minutes)
+- Step 2: **Data processing**
+    - JSON gets transformed into Parquet / Delta (every 15 minutes)
+    - Data compaction of small Parquet files into larger ones for efficient downstream usage (every 6 hours)
+- Step 3: **Business queries** &mdash; Large scale multi-table analysis queries run that feed dashboards (every 24 hours)
+- Step 4: **Serve dashboard** &mdash; Results from latest business queries are served on a dashboard
+
 This is an example system that runs regular jobs on a schedule, at scale, on
 the cloud using a variety of technologies:
 
 -  **Prefect:** for job scheduling and workflow management
--  **Coiled::** for cloud hardware provisioning
+-  **Coiled:** for cloud hardware provisioning
 -  **Dask:** for parallel processing
 -  **Parquet** and **Deltalake:** for data storage
--  **XGBoost:** for model training
--  **Streamlit** and **Fast API:** for dashboarding and model hosting
-
-Raw data flows in every minute and is transformed through several stages at
-different scales and cadences.
-
--  **Data Generation:** (*every 30 seconds*) new JSON files appear
--  **Data Preprocessing:** (every minute) JSON gets transformed into Parquet / Delta
--  **Data Compaction:** (every 30 minutes) small Parquet files get repartitioned into larger ones
--  **Business Queries:** (every hour) large scale multi-table analysisqueries run that feed dashboards
--  **Model Training:** (every six hours) with XGBoost
-
-Additionally we keep Streamlit and FastAPI servers up and running.
+-  **Streamlit:** for dashboarding
 
 It looks kinda like this:
 
@@ -29,7 +84,7 @@ It looks kinda like this:
 How this works
 --------------
 
-### Concurrent Flows
+### Prefect for workflow orchestration
 
 The file [workflow.py](workflow.py) defines several Prefect flows operating at
 different cadences:
@@ -46,15 +101,10 @@ preprocess = json_to_parquet.to_deployment(
     name="preprocess",
     interval=timedelta(minutes=1),
 )
-train = update_model.to_deployment(
-    name="train",
-    interval=timedelta(hours=6),
-)
 
 prefect.serve(
     generate,
     preprocess,
-    train,
     ...
 )
 ```
@@ -105,18 +155,6 @@ def query_for_bad_accounts(bucket):
             result.to_parquet(...)
 ```
 
-Data Generation
----------------
-
-In the background we're generating the data ourselves.  This data is taken from
-the TPC-H benchmark suite.  It's a bunch of tables that simulate orders /
-customers / suppliers, and has a schema that looks like this:
-
-![TPC-H Schema](https://docs.snowflake.com/en/_images/sample-data-tpch-schema.png)
-
-This gives the system a sense of realism, while still being able to tune up or
-down in scale and run easily as an example.
-
 How to Run Locally
 ------------------
 
@@ -146,3 +184,4 @@ How to Run in the Cloud
 -----------------------
 
 This all works, we just haven't documented it well yet.
+    
