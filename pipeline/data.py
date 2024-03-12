@@ -1,8 +1,10 @@
 import datetime
 import os
+import uuid
 
 import coiled
 import duckdb
+import pandas as pd
 import psutil
 from dask.distributed import print
 from prefect import flow, task
@@ -10,12 +12,18 @@ from prefect import flow, task
 from .settings import LOCAL, PROCESSED_DIR, REGION, STAGING_DIR, fs, lock_generate
 
 
+def new_time(t, t_start=None, t_end=None):
+
+    d = pd.Timestamp("1998-12-31") - pd.Timestamp("1992-01-01")
+    return t_start + (t - pd.Timestamp("1992-01-01")) * ((t_end - t_start) / d)
+
+
 @task(log_prints=True)
 @coiled.function(
     name="data-generation",
     local=LOCAL,
     region=REGION,
-    keepalive="5 minutes",
+    vm_type="m6i.2xlarge",
     tags={"workflow": "etl-tpch"},
 )
 def generate(scale: float, path: os.PathLike) -> None:
@@ -42,7 +50,8 @@ def generate(scale: float, path: os.PathLike) -> None:
             .arrow()
             .column("table_name")
         )
-        for table in map(str, tables):
+        now = pd.Timestamp.now()
+        for table in reversed(sorted(map(str, tables))):
             if table in static_tables and (
                 list((STAGING_DIR / table).rglob("*.json"))
                 or list((PROCESSED_DIR / table).rglob("*.parquet"))
@@ -51,7 +60,41 @@ def generate(scale: float, path: os.PathLike) -> None:
                 continue
             print(f"Exporting table: {table}")
             stmt = f"""select * from {table}"""
-            df = con.sql(stmt).arrow()
+            df = con.sql(stmt).df()
+
+            # Make order IDs unique across multiple data generation cycles
+            if table == "orders":
+                # Generate new, random uuid order IDs
+                df["o_orderkey_new"] = pd.Series(
+                    (uuid.uuid4().hex for _ in range(df.shape[0])),
+                    dtype="string[pyarrow]",
+                )
+                orderkey_new = df[["o_orderkey", "o_orderkey_new"]].set_index(
+                    "o_orderkey"
+                )
+                df = df.drop(columns="o_orderkey").rename(
+                    columns={"o_orderkey_new": "o_orderkey"}
+                )
+            elif table == "lineitem":
+                # Join with `orderkey_new` mapping to convert old order IDs to new order IDs
+                df = (
+                    df.set_index("l_orderkey")
+                    .join(orderkey_new)
+                    .reset_index(drop=True)
+                    .rename(columns={"o_orderkey_new": "l_orderkey"})
+                )
+
+            # Shift times to be more recent
+            if table == "lineitem":
+                df["l_shipdate"] = new_time(
+                    df["l_shipdate"], t_start=now, t_end=now + pd.Timedelta("7 days")
+                )
+                df = df.rename(columns={"l_shipdate": "l_ship_time"})
+            cols = [c for c in df.columns if "date" in c]
+            df[cols] = new_time(
+                df[cols], t_start=now - pd.Timedelta("15 minutes"), t_end=now
+            )
+            df = df.rename(columns={c: c.replace("date", "_time") for c in cols})
 
             outfile = (
                 path
@@ -59,7 +102,7 @@ def generate(scale: float, path: os.PathLike) -> None:
                 / f"{table}_{datetime.datetime.now().isoformat().split('.')[0]}.json"
             )
             fs.makedirs(outfile.parent, exist_ok=True)
-            df.to_pandas().to_json(
+            df.to_json(
                 outfile,
                 date_format="iso",
                 orient="records",
@@ -73,7 +116,6 @@ def generate(scale: float, path: os.PathLike) -> None:
 def generate_data():
     with lock_generate:
         generate(
-            scale=0.01,
+            scale=1,
             path=STAGING_DIR,
         )
-        generate.fn.client.restart(wait_for_workers=False)

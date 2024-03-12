@@ -7,7 +7,6 @@ from prefect import flow, task
 from prefect.tasks import exponential_backoff
 
 from .settings import (
-    ARCHIVE_DIR,
     LOCAL,
     PROCESSED_DIR,
     REGION,
@@ -29,7 +28,7 @@ from .settings import (
     name="data-etl",
     local=LOCAL,
     region=REGION,
-    keepalive="5 minutes",
+    vm_type="m6i.2xlarge",
     tags={"workflow": "etl-tpch"},
 )
 def json_file_to_parquet(file):
@@ -42,17 +41,8 @@ def json_file_to_parquet(file):
     deltalake.write_deltalake(
         outfile, data, mode="append", storage_options=storage_options
     )
-    print(f"Saved {outfile}")
+    fs.rm(str(file))
     return file
-
-
-@task
-def archive_json_file(file):
-    outfile = ARCHIVE_DIR / file.relative_to(STAGING_DIR)
-    fs.makedirs(outfile.parent, exist_ok=True)
-    fs.mv(str(file), str(outfile))
-
-    return outfile
 
 
 def list_new_json_files():
@@ -63,18 +53,16 @@ def list_new_json_files():
 def json_to_parquet():
     with lock_json_to_parquet:
         files = list_new_json_files()
-        files = json_file_to_parquet.map(files)
-        futures = archive_json_file.map(files)
+        futures = json_file_to_parquet.map(files)
         for f in futures:
-            print(f"Archived {str(f.result())}")
+            print(f"Processed {str(f.result())}")
 
 
 @task(log_prints=True)
 @coiled.function(
-    name="data-etl",
     local=LOCAL,
     region=REGION,
-    keepalive="5 minutes",
+    vm_type="m6i.xlarge",
     tags={"workflow": "etl-tpch"},
 )
 def compact(table):

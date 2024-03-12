@@ -1,62 +1,70 @@
-import dask.dataframe as dd
-import plotly.express as px
+import time
+
+import pandas as pd
 import streamlit as st
 
 from pipeline.settings import RESULTS_DIR
 
 
 @st.cache_data
-def get_data(region, part_type):
-    return dd.read_parquet(
-        RESULTS_DIR / region / part_type.upper() / "*.parquet"
-    ).compute()
+def get_data(segment):
+    return pd.read_parquet(RESULTS_DIR / f"{segment.lower()}.snappy.parquet")
 
 
-description = """
-### Recommended Suppliers
-_Some text that explains the business problem being addressed..._
-
-This query finds which supplier should be selected to place an order for a given part in a given region.
+st.markdown(
+    """
+### Top Unshipped Orders
+_Top 50 unshipped orders with the highest revenue._
 """
-st.markdown(description)
-regions = list(map(str.title, ["EUROPE", "AFRICA", "AMERICA", "ASIA", "MIDDLE EAST"]))
-region = st.selectbox(
-    "Region",
-    regions,
-    index=None,
-    placeholder="Please select a region...",
 )
-part_types = list(map(str.title, ["COPPER", "BRASS", "TIN", "NICKEL", "STEEL"]))
-part_type = st.selectbox(
-    "Part Type",
-    part_types,
-    index=None,
-    placeholder="Please select a part type...",
+
+SEGMENTS = ["automobile", "building", "furniture", "machinery", "household"]
+
+
+def files_exist():
+    # Do we have all the files needed for the dashboard?
+    files = list(RESULTS_DIR.rglob("*.snappy.parquet"))
+    return len(files) == len(SEGMENTS)
+
+
+with st.spinner("Waiting for data..."):
+    while not files_exist():
+        time.sleep(5)
+
+segments = list(
+    map(str.title, ["automobile", "building", "furniture", "machinery", "household"])
 )
-if region and part_type:
-    df = get_data(region, part_type)
+segment = st.selectbox(
+    "Segment",
+    segments,
+    index=None,
+    placeholder="Please select a product segment...",
+)
+if segment:
+    df = get_data(segment)
+    df = df.drop(columns="o_shippriority")
+    df["l_orderkey"] = df["l_orderkey"].map(lambda x: f"{x:09}")
+    df["revenue"] = df["revenue"].round(2)
     df = df.rename(
         columns={
-            "n_name": "Country",
-            "s_name": "Supplier",
-            "s_acctbal": "Balance",
-            "p_partkey": "Part ID",
+            "l_orderkey": "Order ID",
+            "o_order_time": "Date Ordered",
+            "revenue": "Revenue",
         }
     )
-    maxes = df.groupby("Country").Balance.idxmax()
-    data = df.loc[maxes]
-    figure = px.choropleth(
-        data,
-        locationmode="country names",
-        locations="Country",
-        featureidkey="Supplier",
-        color="Balance",
-        color_continuous_scale="viridis",
-        hover_data=["Country", "Supplier", "Balance"],
+
+    df = df.set_index("Order ID")
+    st.dataframe(
+        df.style.format({"Revenue": "${:,}"}),
+        column_config={
+            "Date Ordered": st.column_config.DateColumn(
+                "Date Ordered",
+                format="MM/DD/YYYY",
+                help="Date order was placed",
+            ),
+            "Revenue": st.column_config.NumberColumn(
+                "Revenue (in USD)",
+                help="Total revenue of order",
+            ),
+        },
     )
-    st.plotly_chart(figure, theme="streamlit", use_container_width=True)
-    on = st.toggle("Show data")
-    if on:
-        st.write(
-            df[["Country", "Supplier", "Balance", "Part ID"]], use_container_width=True
-        )
