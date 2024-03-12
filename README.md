@@ -1,12 +1,14 @@
-Example Production ETL System - TPC-H
-=====================================
+# Example Production ETL System - TPC-H
 
-This repository contains a scalable example production data pipeline running on the cloud that represents what we commonly see in real-world applications. While specific details vary, we see both common pipeline steps and common pain points across many use cases.
+People often want to run regular jobs in a data pipeline, on the cloud, at scale. However, many pipelines either don't scale well or are overly complex.
 
-We hope the example here demonstrates a path for addressing common pain points and can serve as a template for your own use case.
+**This repository contains a lightweight, scalable example data pipeline that easily runs regular Python jobs on the cloud.**
 
+We hope this example demonstrates a path for addressing common pain points we see in real-world applications, and can serve as a template for your own use case.
 
 ## Common data pipeline steps
+
+_People want to run regular Python jobs._
 
 While specific details vary across use cases, we often see these four steps:
 
@@ -25,66 +27,50 @@ While specific details vary across use cases, we often see these four steps:
     - _Example:_ Serve an interactive dashboard with a real-time view of customer orders
     - _Example:_ Host an ML model
 
+Running these steps on a regular cadence can be handled by most modern workflow management systems (e.g. Prefect, Dagster, Airflow, Argo). Managing cloud infrastructure and scalability is where most people tend to struggle.
+
 
 ## Common data pipeline pain points
 
-While the outline above is straightforward, in practice there are _many_ things one may need to consider when constructing a data pipeline.
+_Many pipelines either don't scale well or are overly complex._
 
-<!-- Depending on your situation you may need to think about one or more of the following: -->
+Most modern workflow management systems (e.g. Prefect, Dagster, Airflow, Argo) are able to address workflow orchestration needs well. Instead, where we tend to see groups struggle is with:
 
-Luckily, most modern workflow management systems (e.g. Prefect, Dagster, Airflow, Argo) are able to address workflow orchestration needs. 
-
-We tend to see most groups struggle with:
-
-- Complexity around managing cloud infrastructure:
+- **Complexity around managing cloud infrastructure**:
     - Provisioning / deprovisioning cloud machines
     - Software environment management
     - Handling cloud data access
     - Easy access to logs
     - Cost monitoring and spending limits
-    - ...
-- Scalability:
-    - "I want to run existing Python processing code, in parallel, on cloud machines"
-    - Computing at scale on larger-than-memory datasets (e.g. 100 TB Parquet dataset in S3)
+- **Lack of scalability**:
+    - Scaling existing Python code across many cloud machines in parallel
+    - Computing on larger-than-memory datasets (e.g. 100 TB Parquet dataset in S3)
 
-Below we show an example that connects Prefect, for workflow orchestration, with Coiled, for managing cloud infrastructure, to run a scalable data pipeline on the cloud, easily.
+Because of these issues, it's common for systems to be overly complex or very expensive.
 
-<!-- ## Current approaches and pain points
-
-- Airflow on a big machine
-    - Simple architecture, not a lot to manage
-    - Doesn’t scale
-    - Is expensive to keep a large VM up 24x7
-- Prefect/Dagster/Argo on ECS/Kubernetes
-    - Workflow management is easy
-    - Can use many machines
-    - Deployment is complex and a lot to manage -->
+Below we show an example that connects Prefect and Coiled to run a lightweight, scalable data pipeline on the cloud.
 
 
-## Example pipeline
+## Example scalable pipeline
 
-Our example data pipeline uses the [TPC-H dataset](https://www.tpc.org/tpch/) to generate customer purchase orders. 
+_It's easy to run regularly scheduled jobs on the cloud at scale with Coiled and Prefect._
 
-- Step 1: **Data generation** &mdash; New JSON files with customer orders and supplier information appear in an S3 bucket (every 15 minutes)
+Our example data pipeline looks like the following:
+
+- Step 1: **Data generation** &mdash; New [TPC-H dataset](https://www.tpc.org/tpch/) JSON files with customer orders and supplier information appear in an S3 bucket (every 15 minutes)
 - Step 2: **Data processing**
     - JSON gets transformed into Parquet / Delta (every 15 minutes)
     - Data compaction of small Parquet files into larger ones for efficient downstream usage (every 6 hours)
 - Step 3: **Business query** &mdash; Run large scale multi-table analysis query to monitor unshipped, high-revenue orders (every 24 hours)
 - Step 4: **Serve dashboard** &mdash; Results from latest business query are served on a dashboard (always on)
 
-<!-- This is an example system that runs regular jobs on a schedule, at scale, on
-the cloud using a variety of technologies:
-
--  **Prefect:** for workflow orchestration
--  **Coiled:** for cloud deployment
--  **Dask:** for parallel processing
--  **Parquet** and **Deltalake:** for data storage
--  **Streamlit:** for dashboarding -->
-
 ![ETL Pipeline](images/excalidraw.png)
 
-How this works
---------------
+## How this works
+
+_We combine Prefect's workflow orchestration with Coiled's easy cloud infrastructure management._
+
+We think this is a lightweight approach that addresses common pain points and works well for most people.
 
 ### Prefect for workflow orchestration
 
@@ -148,7 +134,9 @@ def convert_all_files():
 
 ### Dask Clusters for large-scale jobs
 
-Our processed data is terabyte-scale, so it can't be processed on a single machine. Our multi-table analysis query in [pipeline/reduce.py](pipeline/reduce.py) use Coiled to create an on-demand Dask cluster to handle this large-scale processing.
+The large-scale, multi-table analysis query in [pipeline/reduce.py](pipeline/reduce.py) uses Coiled to create an on-demand Dask cluster to handle this large-scale processing.
+
+Dask handles larger-than-memory computations. Coiled deploys Dask for us.
 
 ```python
 # pipeline/reduce.py
@@ -166,15 +154,9 @@ def unshipped_orders_by_revenue(bucket):
             result.to_parquet(...)
 ```
 
-Summary
--------
+## How to run
 
-Use Prefect for scheduling regular jobs and workflow orchestration.
-
-Use Coiled for deploying Prefect tasks and Dask for larger-than-memory computation.
-
-How to run
-----------
+_You can run this pipeline yourself, either locally or on the cloud._
 
 Make sure you have a [Prefect cloud](https://www.prefect.io/cloud) account and have authenticated your local machine.
 
@@ -182,26 +164,20 @@ Create a software environment:
 
 ```bash
 mamba env create -f environment.yml
+mamba activate etl-tpch
 ```
 
-Then run:
+### Local
+
+In your terminal run:
 
 ```bash
-python workflow.py          # Run ETL pipeline
+python workflow.py   # Run data pipeline locally
 ```
 
-Watch things run, both in your terminals and on Prefect cloud, and then ctrl-C to shut everything down.
+### Cloud
 
-How to Run in the Cloud
------------------------
-
-Create a software environment:
-
-```bash
-mamba env create -f environment.yml
-```
-
-Then run:
+In your terminal run:
 
 ```bash
 coiled prefect serve \
