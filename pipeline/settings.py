@@ -10,6 +10,7 @@ with open(Path(__file__).parent / "config.yml", "rb") as f:
     data = yaml.safe_load(f)
 
 LOCAL = data["local"]
+WORKSPACE = data["workspace"]
 ROOT = Path(data["data-dir"]).resolve()
 fs = fsspec.filesystem(ROOT.protocol, use_listings_cache=False)
 

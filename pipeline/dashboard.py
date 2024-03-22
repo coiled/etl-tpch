@@ -7,11 +7,11 @@ import requests
 from prefect import flow
 from rich import print
 
-from .settings import DASHBOARD_FILE, LOCAL, REGION
+from .settings import DASHBOARD_FILE, LOCAL, REGION, WORKSPACE
 
 port = 8080
-name = "etl-tpch-dashboard"
-subdomain = "etl-tpch"
+name = "dashboard"
+subdomain = "dashboard"
 
 
 def deploy():
@@ -22,6 +22,7 @@ def deploy():
     else:
         cmd = f"""
         coiled run \
+            --workspace {WORKSPACE} \
             --region {REGION} \
             --vm-type t3.medium \
             -f dashboard.py \
@@ -31,7 +32,6 @@ def deploy():
             -e AWS_ACCESS_KEY_ID={os.environ['AWS_ACCESS_KEY_ID']} \
             -e AWS_SECRET_ACCESS_KEY={os.environ['AWS_SECRET_ACCESS_KEY']} \
             --detach \
-            --keepalive '520 weeks' \
             --name {name} \
             -- \
             {cmd}
