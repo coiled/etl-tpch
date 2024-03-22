@@ -4,16 +4,24 @@ import uuid
 
 import coiled
 import duckdb
+import numpy as np
 import pandas as pd
 import psutil
 from dask.distributed import print
 from prefect import flow, task
 
-from .settings import LOCAL, PROCESSED_DIR, REGION, STAGING_DIR, fs, lock_generate
+from .settings import (
+    LOCAL,
+    PROCESSED_DIR,
+    REGION,
+    STAGING_DIR,
+    WORKSPACE,
+    fs,
+    lock_generate,
+)
 
 
 def new_time(t, t_start=None, t_end=None):
-
     d = pd.Timestamp("1998-12-31") - pd.Timestamp("1992-01-01")
     return t_start + (t - pd.Timestamp("1992-01-01")) * ((t_end - t_start) / d)
 
@@ -24,7 +32,7 @@ def new_time(t, t_start=None, t_end=None):
     local=LOCAL,
     region=REGION,
     vm_type="m6i.2xlarge",
-    tags={"workflow": "etl-tpch"},
+    account=WORKSPACE,
 )
 def generate(scale: float, path: os.PathLike) -> None:
     static_tables = ["customer", "nation", "part", "partsupp", "region", "supplier"]
@@ -84,12 +92,15 @@ def generate(scale: float, path: os.PathLike) -> None:
                     .rename(columns={"o_orderkey_new": "l_orderkey"})
                 )
 
-            # Shift times to be more recent
+            # Shift times to be more recent and lineitem prices to be non-uniform
             if table == "lineitem":
                 df["l_shipdate"] = new_time(
-                    df["l_shipdate"], t_start=now, t_end=now + pd.Timedelta("7 days")
+                    df["l_shipdate"], t_start=now, t_end=now + pd.Timedelta("3 days")
                 )
                 df = df.rename(columns={"l_shipdate": "l_ship_time"})
+                df["l_extendedprice"] = (
+                    np.random.rand(df.shape[0]) * df["l_extendedprice"]
+                )
             cols = [c for c in df.columns if "date" in c]
             df[cols] = new_time(
                 df[cols], t_start=now - pd.Timedelta("15 minutes"), t_end=now

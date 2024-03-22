@@ -11,6 +11,7 @@ from .settings import (
     PROCESSED_DIR,
     REGION,
     STAGING_DIR,
+    WORKSPACE,
     fs,
     lock_compact,
     lock_json_to_parquet,
@@ -25,11 +26,11 @@ from .settings import (
     retry_jitter_factor=1,
 )
 @coiled.function(
-    name="data-etl",
+    name="json-to-parquet",
     local=LOCAL,
     region=REGION,
     vm_type="m6i.2xlarge",
-    tags={"workflow": "etl-tpch"},
+    account=WORKSPACE,
 )
 def json_file_to_parquet(file):
     """Convert raw JSON data file to Parquet."""
@@ -60,10 +61,11 @@ def json_to_parquet():
 
 @task(log_prints=True)
 @coiled.function(
+    name="compact",
     local=LOCAL,
     region=REGION,
     vm_type="m6i.xlarge",
-    tags={"workflow": "etl-tpch"},
+    account=WORKSPACE,
 )
 def compact(table):
     print(f"Compacting table {table}")
