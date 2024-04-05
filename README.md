@@ -11,7 +11,6 @@ This repository contains a scalable data pipeline that runs regular jobs on the 
 - **Easy to deploy** on the cloud
 - **Scalable** across many cloud machines
 - **Cheap to run** on ephemeral VMs and a small always-on VM
-This repository contains an example pipeline that connects Prefect and Coiled to run a lightweight, scalable data pipeline on the cloud.
 
 ![ETL Pipeline](images/excalidraw.png)
 
