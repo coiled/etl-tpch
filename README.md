@@ -2,6 +2,8 @@
 
 **This repository is a lightweight scalable example pipeline that runs large Python jobs on a schedule in the cloud. We hope this example is easy to copy and modify for your own needs.**
 
+Learn more in our [blog post](https://docs.coiled.io/blog/easy-scalable-production-etl.html?utm_source=github&utm_medium=etl).
+
 ## Background
 
 It’s common to run regular large-scale Python jobs on the cloud as part of production data pipelines. Modern workflow orchestration systems like Prefect, Dagster, Airflow, Argo, etc. all work well for running jobs on a regular cadence, but we often see groups struggle with complexity around cloud infrastructure and lack of scalability. 
