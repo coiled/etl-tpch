@@ -3,8 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - dask >=2024.2.0
-  - dask-expr
+  - dask >=2024.8.0
   - coiled
   - zstandard
   - python-duckdb
@@ -17,8 +16,8 @@ dependencies:
   - s3fs
   - universal_pathlib <0.2.0
   - boto3
-  - deltalake=0.15.3
+  - deltalake >=0.18
   # - dask-deltatable
   - pip
   - pip:
-    - git+https://github.com/fjetter/dask-deltatable.git@dask_expr
+    - dask-deltatable==0.3.3
