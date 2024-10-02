@@ -20,4 +20,4 @@ dependencies:
   # - dask-deltatable
   - pip
   - pip:
-    - git+https://github.com/dask-contrib/dask-deltatable.git@7706c22aa07f978f481ca4996dce8ca0121c812e
+    - dask-deltatable==0.3.3
