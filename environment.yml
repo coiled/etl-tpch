@@ -10,7 +10,7 @@ dependencies:
   - xgboost
   - fastapi
   - plotly
-  - prefect >=2.16
+  - prefect <3
   - filelock
   - streamlit
   - s3fs
